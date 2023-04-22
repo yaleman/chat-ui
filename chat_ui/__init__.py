@@ -24,10 +24,12 @@ INTERACTION = Tuple[float, str, str]
 
 class AppState:
     """ keeps internal state """
-    def __init__(self) -> None:
+    def __init__(self, max_history_age: int=3600) -> None:
         self.sessions: Dict[str, List[INTERACTION]] = {}
         self.load_history()
         self.last_save = -1.0
+        self.max_history_age = max_history_age
+
 
     def record_message(self, session_id: str, interaction: INTERACTION) -> None:
         """ records a message for a session """
@@ -45,6 +47,14 @@ class AppState:
         response.sort(key=lambda x: x[0], reverse=True)
         return response
 
+    def trim_history(self) -> None:
+        """ goes through the self.sessions and removes things older than self.max_history seconds old """
+        for session_id in self.sessions:
+            self.sessions[session_id] = [interaction
+                                         for interaction
+                                         in self.sessions[session_id]
+                                         if interaction[0] > datetime.utcnow().timestamp() - self.max_history_age]
+
     def clear_history(self, session_id: str) -> None:
         """ clears the data for this session """
         print(f"Clearing history for {session_id}")
@@ -53,6 +63,7 @@ class AppState:
 
     def save_history(self) -> None:
         """ if self.last_save is more than 10 seconds ago, save the history to a file """
+        self.trim_history()
         if datetime.utcnow().timestamp() > self.last_save + SAVE_TIMER:
             history = Path("history.json")
             history.write_text(json.dumps(self.sessions, default=str, ensure_ascii=False))
