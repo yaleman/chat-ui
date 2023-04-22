@@ -25,6 +25,7 @@ mypy = "^1.2.0"
 black = "^23.3.0"
 ruff = "^0.0.262"
 pytest = "^7.3.1"
+httpx = "^0.24.0"
 
 [tool.poetry.scripts]
 chat-ui = "chat_ui.__main__:main"

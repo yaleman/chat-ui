@@ -24,8 +24,9 @@ INTERACTION = Tuple[float, str, str]
 
 class AppState:
     """ keeps internal state """
-    def __init__(self, max_history_age: int=3600) -> None:
+    def __init__(self, history_file: str = "history.json", max_history_age: int=3600) -> None:
         self.sessions: Dict[str, List[INTERACTION]] = {}
+        self.history_file = history_file
         self.load_history()
         self.last_save = -1.0
         self.max_history_age = max_history_age
@@ -65,13 +66,13 @@ class AppState:
         """ if self.last_save is more than 10 seconds ago, save the history to a file """
         self.trim_history()
         if datetime.utcnow().timestamp() > self.last_save + SAVE_TIMER:
-            history = Path("history.json")
+            history = Path(self.history_file)
             history.write_text(json.dumps(self.sessions, default=str, ensure_ascii=False))
             self.last_save = datetime.utcnow().timestamp()
 
     def load_history(self) -> None:
         """ loads the history from a file """
-        history = Path("history.json")
+        history = Path(self.history_file)
         if history.exists():
             self.sessions = json.loads(history.read_text())
 
