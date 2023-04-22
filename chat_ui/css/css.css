@@ -1,0 +1,33 @@
+.htmx-indicator{
+    display:none;
+}
+.htmx-request .my-indicator{
+    display:inline;
+}
+.htmx-request.my-indicator{
+    display:inline;
+}
+
+.message {
+    border: 1px solid black;
+    /* round the corners of the element */
+    border-radius: 5px;
+    /* set the background to light blue */
+    background-color: #4687c3;
+    /* set the text colour to white */
+    color: white;
+    padding: 1.0em;
+    margin-top: 0.5em;
+}
+.response {
+    border: 1px solid black;
+    /* round the corners of the element */
+    border-radius: 5px;
+    /* set the background to light pink */
+    background-color: pink;
+    /* set the text colour to white */
+    color: black;
+    padding: 1.0em;
+    margin-top: 0.5em;
+
+}
