@@ -22,7 +22,7 @@ python-multipart = "^0.0.6"
 
 [tool.poetry.group.dev.dependencies]
 mypy = "^1.4.1"
-black = "^23.3.0"
+black = "^23.7.0"
 ruff = "^0.0.277"
 pytest = "^7.4.0"
 httpx = "^0.24.1"
