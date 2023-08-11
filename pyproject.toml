@@ -12,7 +12,7 @@ packages = [
 
 [tool.poetry.dependencies]
 python = "^3.10"
-fastapi = "^0.100.1"
+fastapi = "^0.101.0"
 pydantic = "^2.1.1"
 uvicorn = "^0.23.2"
 click = "^8.1.6"
