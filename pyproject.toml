@@ -13,7 +13,7 @@ packages = [
 [tool.poetry.dependencies]
 python = "^3.10"
 fastapi = "^0.109.2"
-pydantic = "^2.1.1"
+pydantic = "^2.6.1"
 uvicorn = "^0.23.2"
 click = "^8.1.6"
 fortune-python = "^1.0.3"
