@@ -1,0 +1,21 @@
+site_name: Chat UI
+
+theme:
+  name: "material"
+plugins:
+  - search:
+  - mkdocstrings:
+      default_handler: python
+      handlers:
+        python:
+          rendering:
+            show_source: true
+      # watch:
+      #   - "chat_ui/"
+markdown_extensions:
+  mdantic:
+    columns: [key, type, required, default]
+nav:
+  - "Home": ../README.md
+  - "API Docs": chat_ui.md
+  - "Config": chat_ui.config.md
