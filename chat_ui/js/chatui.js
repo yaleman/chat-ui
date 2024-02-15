@@ -3,7 +3,7 @@
 
 
 const { createApp, ref } = Vue
-const jobPollIntervalMs = 1000;
+const jobPollIntervalMs = 5000;
 createApp({
     data() {
         var data = {
@@ -46,6 +46,7 @@ createApp({
     created() {
         this.poller = setInterval(this.updateJobs, jobPollIntervalMs);
         this.getNewWebSocket(true);
+        this.updateJobs();
     },
     computed: {
         hasUserModalErrors() {
