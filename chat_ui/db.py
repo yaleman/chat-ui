@@ -1,7 +1,7 @@
 from datetime import datetime
 from sqlite3 import Connection, Cursor, Row, connect
 import sys
-from typing import Any, List, Optional
+from typing import Any, List, Optional, Union
 from uuid import uuid4
 
 from loguru import logger
@@ -20,11 +20,13 @@ from chat_ui.models import Job, JobDetail, NewJob, UserDetail, UserForm
 # - id
 # - userid
 # - status
-# - created
-# - prompt
-# - response
-# - request_type
-# - runtime
+# - created - float
+# - updated - float
+# - prompt - string
+# - response - string
+# - request_type - string
+# - runtime - float
+# - metadata - json-serialized dump of things
 
 USERS_TABLE = "users"
 JOBS_TABLE = "jobs"
@@ -65,7 +67,7 @@ class DB:
         try:
             cur.execute(
                 f"""CREATE TABLE IF NOT EXISTS
-                    {JOBS_TABLE}(id UNIQUE NOT NULL, userid NOT NULL, status NOT NULL, created NOT NULL, prompt NOT NULL, response, request_type NOT NULL, runtime)
+                    {JOBS_TABLE}(id UNIQUE NOT NULL, userid NOT NULL, status NOT NULL, created NOT NULL, updated, prompt NOT NULL, response, request_type NOT NULL, runtime, metadata)
                     """
             )
         except Exception as error:
@@ -76,7 +78,11 @@ class DB:
     def get_jobs(self, userid: str, include_hidden: bool = False) -> List[Job]:
         """gets the jobs for a userid"""
         try:
-            query = f"SELECT id,userid,status,created from {JOBS_TABLE} where userid=:userid"
+            query = f"""
+                SELECT id, userid, status, created, request_type
+                FROM {JOBS_TABLE}
+                WHERE userid=:userid
+                """
             if not include_hidden:
                 query += " AND status != 'hidden'"
             cur = self.conn.cursor()
@@ -93,7 +99,11 @@ class DB:
     def get_job(self, userid: str, id: str) -> Optional[JobDetail]:
         """gets the job for a given user/id combo"""
         try:
-            query = f"SELECT * from {JOBS_TABLE} where userid=:userid AND id=:id"
+            query = f"""
+                SELECT *
+                FROM {JOBS_TABLE}
+                WHERE userid=:userid AND id=:id
+                """
             cur = self.conn.cursor()
             cur.execute(
                 query,
@@ -144,7 +154,7 @@ class DB:
     def has_user(self, userid: str) -> bool:
         """gets the jobs for a userid"""
         try:
-            query = "SELECT name from {USERS_TABLE} where userid=:userid"
+            query = "SELECT COUNT(name) from {USERS_TABLE} where userid=:userid"
             cur = self.conn.cursor()
             cur.execute(query, {"userid": userid})
             return cur.fetchone() is not None
@@ -170,7 +180,7 @@ class DB:
         logger.debug("Stored job: {}", job)
 
         cur.execute(
-            "SELECT id, userid, status, created from jobs where id=:id AND userid=:userid",
+            "SELECT id, userid, status, created, request_type from jobs where id=:id AND userid=:userid",
             job_data,
         )
         res = Job(**cur.fetchone())
@@ -181,7 +191,7 @@ class DB:
         """update the db to hide a job"""
         cur = self.conn.cursor()
         cur.execute(
-            """UPDATE jobs
+            f"""UPDATE {JOBS_TABLE}
             SET status="hidden"
             WHERE userid=:userid AND id=:id
             """,
@@ -197,8 +207,8 @@ class DB:
         """update the db with the state of the job"""
         cur = self.conn.cursor()
         cur.execute(
-            """UPDATE jobs
-            SET status=:status, response=:response, runtime=:runtime
+            f"""UPDATE {JOBS_TABLE}
+            SET status=:status, response=:response, runtime=:runtime, metadata=:metadata, updated=unixepoch('now','subsec')
             WHERE id=:id
             """,
             job.model_dump(),
@@ -209,14 +219,17 @@ class DB:
             raise ValueError("Updated a job and then couldn't find it?")
         return res
 
-    def error_job(self, job: JobDetail) -> None:
+    def error_job(self, job: Union[Job, JobDetail], error_message: str) -> None:
         """update the db to say there was an error"""
         cur = self.conn.cursor()
         cur.execute(
-            """UPDATE jobs
-            SET status="error"
+            f"""UPDATE {JOBS_TABLE}
+            SET status="error", metadata=:error_message, updated=unixepoch('now','subsec')
             WHERE id=:id
             """,
-            job.model_dump(),
+            {
+                "id": job.id,
+                "error_message": error_message,
+            },
         )
         self.conn.commit()
