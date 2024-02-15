@@ -1,14 +1,20 @@
 """ chat emulator using fastapi """
 
 from contextlib import asynccontextmanager
+from datetime import datetime
+import json
 import os
 import os.path
 import random
 import string
 from pathlib import Path
-import threading
-import time
+import sys
 
+from openai import OpenAI
+from openai.types.chat import (
+    ChatCompletionSystemMessageParam,
+    ChatCompletionUserMessageParam,
+)
 from typing import Any, AsyncGenerator, List, Optional, Tuple
 from fastapi import (
     FastAPI,
@@ -19,8 +25,8 @@ from fastapi import (
 )
 from fastapi.responses import FileResponse, HTMLResponse
 from loguru import logger
-import requests
 from starlette.middleware.sessions import SessionMiddleware
+from chat_ui.backgroundpoller import BackgroundPoller
 from chat_ui.config import Config
 from chat_ui.db import DB
 
@@ -44,49 +50,12 @@ SUPERSECRETFLAG = os.getenv("SUPERSECRETFLAG", "TheCheeseIsALie")
 INTERACTION = Tuple[float, str, str]
 
 
-class BackgroundPoller(threading.Thread):
-    def __init__(self, shared_message: str = "run"):
-        super().__init__()
-        self.config = Config()
-        self.shared_message = shared_message
-
-    def run(self) -> None:
-        if self.config.backend_url is None:
-            logger.info("No backend_url set, not starting background poller")
-            return
-        logger.debug(
-            "Starting background poller on backend_url={}", self.config.backend_url
-        )
-        loops = 0
-        while True:
-            # shutdown handler
-            if self.shared_message == "stop":
-                logger.info("Shutting down background poller")
-                break
-            loops += 1
-            if loops == 5:
-                loops = 0
-                try:
-
-                    test_url = f"{self.config.backend_url}/v1/models"
-                    res = requests.get(test_url, timeout=1)
-                    res.raise_for_status()
-                    logger.debug("Backend {} is up!", test_url)
-                except Exception as error:
-                    logger.error(
-                        "Failed to query backend test_url={} error={}", test_url, error
-                    )
-            time.sleep(1)
-
-
 class AppState:
     """keeps internal state"""
 
     def __init__(
         self,
-        # history_file: str = "history.json",
         db_path: Optional[str] = None,
-        # max_history_age: int = 3600,
     ) -> None:
 
         self.config = Config()
@@ -94,23 +63,67 @@ class AppState:
         if db_path is not None:
             self.config.db_path = db_path
 
-        logger.debug(self.config.model_dump())
+        backend_api_key = self.config.backend_api_key or "not needed"
+        self.backend_client = OpenAI(
+            base_url=self.config.backend_url, api_key=backend_api_key
+        )
 
         self.db = DB(self.config.db_path)
+        if self.config.backend_url is None:
+            logger.error(
+                "No backend_url set, no point running! Set the {}BACKEND_URL environment variable!",
+                self.config.model_config.get("env_prefix"),
+            )
+            sys.exit(1)
+
+        logger.debug(self.config.model_dump())
 
     async def handle_job(self, job: Job) -> None:
         """does the background job handling bit"""
-        job = JobDetail(**job.model_dump())
-        logger.debug("Starting job: {}", job)
-
-        job.status = "running"
-        self.db.update_job(job)
 
         try:
-            raise ValueError("lol")
+            job.status = "running"
+            jobdetail = JobDetail(**job.model_dump())
+            self.db.update_job(jobdetail)
+            # ok, let's do the prompty thing
+
+            history = (
+                ChatCompletionSystemMessageParam(
+                    role="system", content=self.config.backend_system_prompt
+                ),
+                ChatCompletionUserMessageParam(role="user", content=jobdetail.prompt),
+            )
+            logger.debug("Starting job: {}", job)
+            start_time = datetime.utcnow().timestamp()
+            # TODO: start the timer
+            completion = self.backend_client.chat.completions.create(
+                model="local-model",  # this field is currently unused
+                messages=history,
+                temperature=0.7,
+                stream=False,
+            )
+            # example response
+            # ChatCompletion(id='chatcmpl-y0a32z8y1k87uudh04maxl', choices=[Choice(finish_reason='stop', index=0, logprobs=None, message=ChatCompletionMessage(content="Cheese! It's a versatile food product that can be made from the pressed curds of milk. It's used in a variety of dishes, as a standalone snack, or even in non-edible applications like crafting and home improvement. There are many types of cheese around the world, each with its unique taste, texture, and production process. Do you have a favorite type of cheese, or would you like to know more about how it's made?", role='assistant', function_call=None, tool_calls=None))], created=1707962902, model='/Users/yaleman/.cache/lm-studio/models/TheBloke/Mixtral-8x7B-Instruct-v0.1-GGUF/mixtral-8x7b-instruct-v0.1.Q4_0.gguf', object='chat.completion', system_fingerprint=None, usage=CompletionUsage(completion_tokens=100, prompt_tokens=37, total_tokens=137))
+            # TODO: build metadata
+            logger.info(completion)
+            response = completion.choices[0].message.content
+            if completion.usage is not None:
+                usage = completion.usage.model_dump()
+            else:
+                usage = None
+            jobdetail.runtime = datetime.utcnow().timestamp() - start_time
+            job_metadata = {
+                "model": completion.model,
+                "usage": usage,
+            }
+            logger.debug("Job metadata: {}", json.dumps(job_metadata))
+            jobdetail.response = response
+            jobdetail.metadata = json.dumps(job_metadata, default=str)
+            jobdetail.status = "complete"
+            self.db.update_job(jobdetail)
         except Exception as error:
             logger.error("id={} error={}", job.id, error)
-            self.db.error_job(job)
+            self.db.error_job(job, str(error))
 
 
 state = AppState()
@@ -187,9 +200,9 @@ async def jobs(userid: str) -> List[Job]:
 @app.get("/jobs/{userid}/{job_id}")
 async def job_detail(userid: str, job_id: str) -> JobDetail:
     res = state.db.get_job(userid, job_id)
-    logger.debug(res)
     if res is None:
         raise HTTPException(status_code=404, detail="Item not found")
+    logger.debug(res.model_dump_json())
     return res
 
 

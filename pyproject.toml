@@ -7,13 +7,14 @@ readme = "README.md"
 packages = [{ include = "chat_ui" }]
 
 [tool.poetry.dependencies]
+
 python = "^3.10"
-fastapi = "^0.113.0"
-pydantic = "^2.9.0"
-uvicorn = "^0.30.6"
-click = "^8.1.7"
+fastapi = "^0.109.2"
+pydantic = "^2.6.1"
+uvicorn = "^0.23.2"
+click = "^8.1.6"
 fortune-python = "^1.1.1"
-itsdangerous = "^2.2.0"
+itsdangerous = "^2.1.2"
 python-multipart = "^0.0.9"
 pydantic-settings = "^2.1.0"
 structlog = "^24.1.0"
@@ -23,6 +24,7 @@ websocket = "^0.2.1"
 websockets = "^12.0"
 aiohttp = "^3.9.3"
 requests = "^2.31.0"
+openai = "^1.12.0"
 
 [tool.poetry.group.dev.dependencies]
 mypy = "^1.5.0"
@@ -31,7 +33,6 @@ ruff = "^0.2.1"
 pytest = "^8.0.0"
 httpx = "^0.24.1"
 mkdocs = { version = "^1.5.3", extras = ["python"] }
-# mkdocstrings = "^0.24.0"
 mkdocs-material = "^9.5.9"
 markdown-mdantic = "^2.1.0"
 types-requests = "^2.31.0.20240125"

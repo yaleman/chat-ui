@@ -44,14 +44,13 @@ createApp({
     setup() {
     },
     created() {
+        this.getNewWebSocket();
         this.poller = setInterval(this.updateJobs, jobPollIntervalMs);
-        this.getNewWebSocket(true);
-        this.updateJobs();
+        setTimeout(this.updateJobs, 500);
     },
     computed: {
         hasUserModalErrors() {
             return this.userModalErrors.length > 0;
-
         },
         hasUserModalSuccess() {
             return this.userModalSuccess.length > 0;
@@ -83,12 +82,16 @@ createApp({
                 return right_time - left_time;
             });
             return jobs
+        },
+        isPolling() {
+            return !(this.ws === null || this.ws.readystate == 0)
         }
     },
     methods: {
+
         checkForWebSocket: function () {
-            if (this.ws === null || this.ws.readystate == 0) {
-                this.getNewWebSocket(true);
+            if (!this.isPolling) {
+                this.getNewWebSocket();
             }
         },
         deleteJob: function (jobid) {
@@ -136,7 +139,7 @@ createApp({
                         break;
                     case "delete":
                         console.debug("Removing job", response.payload);
-                        delete this.jobs[event.payload.id];
+                        delete this.jobs[response.payload.id];
                         break;
                     case "error":
                         console.error("Error from server", response.payload);
@@ -167,13 +170,13 @@ createApp({
         stopPoller: function () {
             clearInterval(this.poller);
             console.debug("Stopped poller");
+            this.ws = null;
         },
         updateJobs: function () {
             const payload = { "userid": this.userid, "message": "jobs" };
             this.checkForWebSocket();
             // console.debug(this.ws);
             this.ws.send(JSON.stringify(payload));
-
         },
         sendPrompt: function () {
             const payload = {
@@ -197,7 +200,7 @@ createApp({
                 if (response.ok) {
                     console.debug("prompt sent");
                     this.currentPrompt = "";
-                    this.updateJobs();
+                    setTimeout(this.updateJobs, 500);
                 }
             });
         },
@@ -267,7 +270,7 @@ createApp({
                     return "text-muted"
                 case "running":
                     return "text-primary";
-                case "completed":
+                case "complete":
                     return "text-success";
                 case "error":
                     return "text-danger";
@@ -275,6 +278,12 @@ createApp({
                     return "text-muted";
             }
         }
+    },
+    watch: {
+        name: function (newName, oldName) {
+            if (newName) {
+                this.saveUserDetails();
+            }
+        }
     }
-    ,
 }).mount('#app')

@@ -8,5 +8,10 @@ class Config(BaseSettings):
     # The path to the sqlite database, can include ~/ for the user's home directory
     db_path: str
     backend_url: Optional[str] = None
+    backend_api_key: Optional[str] = None
+    backend_system_prompt: str = (
+        "You are an intelligent assistant. You always provide well-reasoned answers that are both correct and helpful."
+    )
+    backend_temperature: float = 0.7
 
     model_config = SettingsConfigDict(env_prefix="CHATUI_")

@@ -9,3 +9,9 @@ docs:
 
 run:
 	poetry run chat-ui --reload
+
+docker/build:
+	docker build -t chat-ui .
+
+docker: docker/build
+	docker run --rm -it --init --name chat-ui -p 9195:9195 chat-ui

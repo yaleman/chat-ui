@@ -58,12 +58,15 @@ class Job(BaseModel):
     status: Annotated[str, AfterValidator(validate_job_status)]
     created: datetime
     updated: Optional[datetime] = None
+    request_type: Annotated[str, AfterValidator(validate_request_type)]
 
 
 class JobDetail(Job):
     prompt: str
     response: Optional[str] = None
     runtime: Optional[float] = None
+    # json-serialized metadata
+    metadata: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
 
