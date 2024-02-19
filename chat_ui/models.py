@@ -1,9 +1,8 @@
 from datetime import datetime
 import json
-from typing import Annotated, List, Optional, Union
+from typing import Annotated, Any, List, Optional, Union
 from uuid import UUID
 from pydantic import AfterValidator, BaseModel, ConfigDict
-
 
 JOB_STATUSES = ["created", "running", "error", "complete", "hidden"]
 REQUEST_TYPES = [
@@ -60,6 +59,18 @@ class Job(BaseModel):
     updated: Optional[datetime] = None
     request_type: Annotated[str, AfterValidator(validate_request_type)]
 
+    @classmethod
+    def from_jobs(cls, jobs_object: Any) -> "Job":
+        newobject = {
+            "id": str(jobs_object.id),
+            "userid": str(jobs_object.userid),
+            "status": jobs_object.status,
+            "created": jobs_object.created,
+            "updated": jobs_object.updated,
+            "request_type": jobs_object.request_type,
+        }
+        return cls(**newobject)
+
 
 class JobDetail(Job):
     prompt: str
@@ -69,6 +80,22 @@ class JobDetail(Job):
     metadata: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
+
+    @classmethod
+    def from_jobs(cls, jobs_object: Any) -> "JobDetail":
+        newobject = {
+            "id": str(jobs_object.id),
+            "userid": str(jobs_object.userid),
+            "status": jobs_object.status,
+            "created": jobs_object.created,
+            "updated": jobs_object.updated,
+            "prompt": jobs_object.prompt,
+            "response": jobs_object.response,
+            "runtime": jobs_object.runtime,
+            "metadata": jobs_object.job_metadata,
+            "request_type": jobs_object.request_type,
+        }
+        return cls(**newobject)
 
 
 class NewJob(BaseModel):

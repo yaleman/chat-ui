@@ -10,13 +10,14 @@ import string
 from pathlib import Path
 import sys
 
-from openai import OpenAI
+from openai import AsyncOpenAI
+
 from openai.types.chat import (
-    ChatCompletionSystemMessageParam,
     ChatCompletionUserMessageParam,
 )
-from typing import Any, AsyncGenerator, List, Optional, Tuple
+from typing import Any, AsyncGenerator, Generator, List
 from fastapi import (
+    Depends,
     FastAPI,
     HTTPException,
     BackgroundTasks,
@@ -25,10 +26,15 @@ from fastapi import (
 )
 from fastapi.responses import FileResponse, HTMLResponse
 from loguru import logger
+from sqlmodel import Session, select
+import sqlmodel
+from sqlalchemy.exc import NoResultFound
+
 from starlette.middleware.sessions import SessionMiddleware
-from chat_ui.backgroundpoller import BackgroundPoller
+
+# from chat_ui.backgroundpoller import BackgroundPoller
 from chat_ui.config import Config
-from chat_ui.db import DB
+from chat_ui.db import Jobs, Users
 
 from chat_ui.models import (
     Job,
@@ -41,63 +47,41 @@ from chat_ui.models import (
     validate_uuid,
 )
 
-SAVE_TIMER = 1
-
-SUPERSECRETREQUEST = os.getenv("SUPERSECRETREQUEST", "hello world").split()
-SUPERSECRETFLAG = os.getenv("SUPERSECRETFLAG", "TheCheeseIsALie")
-
-# type for interactions
-INTERACTION = Tuple[float, str, str]
+logger.info("Config: {}", Config().model_dump())
+connect_args = {"check_same_thread": False}
+sqlite_url = f"sqlite:///{Config().db_path}"
+engine = sqlmodel.create_engine(sqlite_url, echo=False, connect_args=connect_args)
 
 
-class AppState:
-    """keeps internal state"""
+def get_backend_client() -> AsyncOpenAI:
+    """returns the backend client"""
+    return AsyncOpenAI(
+        api_key=Config().backend_api_key,
+        base_url=Config().backend_url,
+    )
 
-    def __init__(
-        self,
-        db_path: Optional[str] = None,
-    ) -> None:
 
-        self.config = Config()
+async def handle_job(job: Jobs) -> None:
+    """does the background job handling bit"""
 
-        if db_path is not None:
-            self.config.db_path = db_path
-
-        backend_api_key = self.config.backend_api_key or "not needed"
-        self.backend_client = OpenAI(
-            base_url=self.config.backend_url, api_key=backend_api_key
-        )
-
-        self.db = DB(self.config.db_path)
-        if self.config.backend_url is None:
-            logger.error(
-                "No backend_url set, no point running! Set the {}BACKEND_URL environment variable!",
-                self.config.model_config.get("env_prefix"),
-            )
-            sys.exit(1)
-
-        logger.debug(self.config.model_dump())
-
-    async def handle_job(self, job: Job) -> None:
-        """does the background job handling bit"""
-
-        try:
-            job.status = "running"
-            jobdetail = JobDetail(**job.model_dump())
-            self.db.update_job(jobdetail)
+    try:
+        job.status = "running"
+        logger.info("Starting job: {}", job)
+        with Session(engine) as session:
+            session.add(job)
+            session.commit()
+            session.refresh(job)
             # ok, let's do the prompty thing
-
             history = (
-                ChatCompletionSystemMessageParam(
-                    role="system", content=self.config.backend_system_prompt
-                ),
-                ChatCompletionUserMessageParam(role="user", content=jobdetail.prompt),
+                # ChatCompletionSystemMessageParam(
+                #     role="system", content=self.config.backend_system_prompt
+                # ),
+                ChatCompletionUserMessageParam(role="user", content=job.prompt),
             )
             logger.debug("Starting job: {}", job)
             start_time = datetime.utcnow().timestamp()
-            # TODO: start the timer
-            completion = self.backend_client.chat.completions.create(
-                model="local-model",  # this field is currently unused
+            completion = await get_backend_client().chat.completions.create(
+                model="gpt-3.5-turbo",  # this field is currently unused
                 messages=history,
                 temperature=0.7,
                 stream=False,
@@ -111,38 +95,69 @@ class AppState:
                 usage = completion.usage.model_dump()
             else:
                 usage = None
-            jobdetail.runtime = datetime.utcnow().timestamp() - start_time
-            job_metadata = {
-                "model": completion.model,
-                "usage": usage,
-            }
-            logger.debug("Job metadata: {}", json.dumps(job_metadata))
-            jobdetail.response = response
-            jobdetail.metadata = json.dumps(job_metadata, default=str)
-            jobdetail.status = "complete"
-            self.db.update_job(jobdetail)
-        except Exception as error:
-            logger.error("id={} error={}", job.id, error)
-            self.db.error_job(job, str(error))
+            job.runtime = datetime.utcnow().timestamp() - start_time
 
-
-state = AppState()
+            job.response = response
+            job.job_metadata = json.dumps(
+                {
+                    "model": completion.model,
+                    "usage": usage,
+                },
+                default=str,
+            )
+            job.status = "complete"
+            session.add(job)
+            session.commit()
+            session.refresh(job)
+            logger.success("Completed job: {}", job.model_dump_json())
+    except Exception as error:
+        logger.error("id={} error={}", job.id, error)
+        with Session(engine) as session:
+            job.status = "error"
+            job.response = str(error)
+            session.add(job)
+            session.commit()
+            session.refresh(job)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[Any, Any]:
-    t = BackgroundPoller()
-    t.start()
+    """runs the background poller as the app is running"""
+    # t = BackgroundPoller()
+    # t.start()
+    if "pytest" not in sys.modules:
+        logger.info(
+            "Checking for outstanding jobs on startup and setting them to error status"
+        )
+        with Session(engine) as session:
+            jobs = session.exec(select(Jobs).where(Jobs.status == "running")).all()
+            for job in jobs:
+                logger.warning("Job id={} was running, setting to error", job.id)
+
+                job.status = "error"
+                job.response = "Server restarted, please try this again"
+                session.add(job)
+            session.commit()
+
     yield
-    t.shared_message = "stop"
+    # t.shared_message = "stop"
 
 
+# state = AppState()
 app = FastAPI(lifespan=lifespan)
+# app = FastAPI(lifespan=lifespan)
 app.add_middleware(
     SessionMiddleware,
     secret_key=random.sample(string.ascii_letters + string.digits, 32),
     session_cookie="chatsession",
 )
+
+
+def get_session() -> Generator[Session, None, None]:
+    with Session(engine) as session:
+        if "pytest" not in sys.modules:
+            sqlmodel.SQLModel.metadata.create_all(engine)
+        yield session
 
 
 async def staticfile(filename: str, path: str) -> FileResponse:
@@ -172,42 +187,86 @@ async def js(filename: str) -> FileResponse:
 
 
 @app.post("/user")
-async def post_user(form: UserForm) -> UserDetail:
+async def post_user(
+    form: UserForm,
+    session: Session = Depends(get_session),
+) -> UserDetail:
     """post user"""
-    user = state.db.create_user(form)
-    if user is not None:
-        logger.info(user.model_dump_json())
-        return user
-    raise HTTPException(status_code=500, detail="Failed to create user")
+    newuser = Users(**form.model_dump())
+
+    try:
+        existing_user = session.exec(
+            select(Users).where(Users.userid == newuser.userid)
+        ).one()
+        existing_user.name = newuser.name
+        existing_user.updated = datetime.utcnow()
+        session.add(existing_user)
+        session.commit()
+        session.refresh(existing_user)
+        newuser = existing_user
+    except NoResultFound:
+        session.add(newuser)
+        session.commit()
+        session.refresh(newuser)
+    return UserDetail(
+        userid=str(newuser.userid),
+        name=newuser.name,
+        created=newuser.created,
+        updated=newuser.updated,
+    )
 
 
 @app.post("/job")
-async def create_job(job: NewJob, background_tasks: BackgroundTasks) -> Job:
+async def create_job(
+    job: NewJob,
+    background_tasks: BackgroundTasks,
+    session: Session = Depends(get_session),
+) -> Job:
     logger.info("Got new job: {}", job)
-    res = state.db.create_job(job)
-    background_tasks.add_task(
-        state.handle_job, JobDetail(prompt=job.prompt, **res.model_dump())
+
+    newjob = Jobs(
+        status="created",
+        userid=job.userid,
+        prompt=job.prompt,
+        request_type=job.request_type,
     )
-    return res
+    session.add(newjob)
+    session.commit()
+    session.refresh(newjob)
+    background_tasks.add_task(handle_job, newjob)
+    return Job.from_jobs(newjob)
 
 
 @app.get("/jobs")
-async def jobs(userid: str) -> List[Job]:
+async def jobs(
+    userid: str,
+    session: Session = Depends(get_session),
+) -> List[Job]:
     """query the jobs for a given userid"""
-    return state.db.get_jobs(userid)
+    query = select(Jobs).where(Jobs.userid == userid)
+    res = session.exec(query).all()
+    return [Job.from_jobs(job) for job in res]
 
 
 @app.get("/jobs/{userid}/{job_id}")
-async def job_detail(userid: str, job_id: str) -> JobDetail:
-    res = state.db.get_job(userid, job_id)
-    if res is None:
+async def job_detail(
+    userid: str,
+    job_id: str,
+    session: Session = Depends(get_session),
+) -> JobDetail:
+    try:
+        query = select(Jobs).where(Jobs.userid == userid, Jobs.id == job_id)
+        job = session.exec(query).first()
+        return JobDetail.from_jobs(job)
+    except NoResultFound:
         raise HTTPException(status_code=404, detail="Item not found")
-    logger.debug(res.model_dump_json())
-    return res
 
 
 @app.websocket("/ws")
-async def websocket_endpoint(websocket: WebSocket) -> None:
+async def websocket_endpoint(
+    websocket: WebSocket,
+    session: Session = Depends(get_session),
+) -> None:
     await websocket.accept()
     if websocket.client is None:
         raise HTTPException(status_code=500, detail="Failed to accept websocket")
@@ -222,9 +281,14 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                 if data.message == "jobs":
                     # serialize the jobs out so the websocket reader can parse them
                     try:
-                        response = WebSocketResponse(
-                            message="jobs", payload=state.db.get_jobs(data.userid)
-                        )
+                        jobs = session.exec(
+                            select(Jobs).where(
+                                Jobs.userid == data.userid, Jobs.status != "hidden"
+                            )
+                        ).all()
+                        payload = [Job.from_jobs(job) for job in jobs]
+                        # logger.debug(jobs)
+                        response = WebSocketResponse(message="jobs", payload=payload)
                     except Exception as error:
                         logger.error(
                             "websocket error={} ip={}", error, websocket.client.host
@@ -234,12 +298,22 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                 elif data.message == "delete":
                     if data.payload is not None:
                         id = validate_uuid(data.payload)
-                        res = state.db.hide_job(userid=data.userid, id=id)
-                        if res is not None:
-                            payload = res.model_dump_json()
-                        else:
-                            payload = ""
-                        response = WebSocketResponse(message="delete", payload=payload)
+                        try:
+                            query = select(Jobs).where(Jobs.id == id)
+                            res = session.exec(query).one()
+                            res.status = "hidden"
+                            session.add(res)
+                            session.commit()
+                            session.refresh(res)
+                            response = WebSocketResponse(
+                                message="delete", payload=res.model_dump_json()
+                            )
+                        except NoResultFound:
+                            logger.debug("No jobs found for userid={}", data.userid)
+                            response = WebSocketResponse(
+                                message="error",
+                                payload=f"No job ID found matching {id}",
+                            )
                     else:
                         response = WebSocketResponse(
                             message="error",
@@ -248,11 +322,11 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
             except Exception as error:
                 logger.error("websocket error={} ip={}", error, websocket.client.host)
                 response = WebSocketResponse(message="error", payload=str(error))
-            logger.debug(
-                "websocket ip={} msg={}",
-                websocket.client.host,
-                response.as_message(),
-            )
+            # logger.debug(
+            #     "websocket ip={} msg={}",
+            #     websocket.client.host,
+            #     response.as_message(),
+            # )
             await websocket.send_text(response.as_message())
     except WebSocketDisconnect as disconn:
         logger.debug(
