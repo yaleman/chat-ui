@@ -12,4 +12,4 @@ RUN pip install --no-cache-dir --upgrade /app/
 
 ENV CHATUI_DB_PATH=/db/chatui.sqlite3
 
-CMD ["chat-ui"]
+CMD ["chat-ui", "--host", "0.0.0.0"]
