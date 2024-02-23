@@ -12,10 +12,10 @@ COPY README.md /app/
 COPY ./chat_ui /app/chat_ui
 
 USER appuser
+ENV PATH="/home/appuser/.local/bin:${PATH}"
 
 RUN pip install --no-cache-dir /app/
 ENV CHATUI_DB_PATH=/db/chatui.sqlite3
 
-ENV PATH="/home/appuser/.local/bin:${PATH}"
 
 CMD ["chat-ui", "--host", "0.0.0.0"]
