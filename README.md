@@ -6,7 +6,7 @@ A really simple FastAPI-based thing that provides a chatbot-looking UI.
 
 All config options are prefixed with `CHATUI_`.
 
-See the chatui.config.Config class for options.
+See the chatui.config.Config class for options, you can also set config options in `~/.config/chat-ui.json`.
 
 ## Request/Job flow
 
