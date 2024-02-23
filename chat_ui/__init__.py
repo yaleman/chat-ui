@@ -339,6 +339,12 @@ async def websocket_endpoint(
         logger.error("websocket error={} ip={}", error, websocket.client.host)
 
 
+@app.get("/healthcheck")
+async def healthcheck() -> str:
+    """healthcheck endpoint"""
+    return "OK"
+
+
 @app.get("/")
 async def index() -> HTMLResponse:
     """returns the contents of html/index.html as a HTMLResponse object"""

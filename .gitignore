@@ -8,3 +8,4 @@ dist/
 build/
 history.json
 .envrc
+site/*
