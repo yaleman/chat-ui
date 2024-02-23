@@ -29,7 +29,7 @@ class JsonConfigSettingsSource(PydanticBaseSettingsSource):
             field_value = file_content_json.get(field_name)
             return field_value, field_name, False
         except Exception as error:
-            logging.error("Failed to load config file %s: %s", CONFIG_FILENAME, error)
+            logging.debug("Failed to load config file %s: %s", CONFIG_FILENAME, error)
         return (None, "", False)
 
     def prepare_field_value(
