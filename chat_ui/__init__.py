@@ -125,11 +125,14 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[Any, Any]:
     """runs the background poller as the app is running"""
     # t = BackgroundPoller()
     # t.start()
+
     if "pytest" not in sys.modules:
         logger.info(
             "Checking for outstanding jobs on startup and setting them to error status"
         )
+
         with Session(engine) as session:
+            sqlmodel.SQLModel.metadata.create_all(engine)
             jobs = session.exec(select(Jobs).where(Jobs.status == "running")).all()
             for job in jobs:
                 logger.warning("Job id={} was running, setting to error", job.id)
