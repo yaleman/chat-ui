@@ -10,7 +10,9 @@ def main(reload: bool = False, host: str = "127.0.0.1") -> None:
     """main function"""
     import uvicorn
 
-    uvicorn.run("chat_ui:app", reload=reload, port=9195, host=host)
+    uvicorn.run(
+        "chat_ui:app", reload=reload, port=9195, host=host, forwarded_allow_ips="*"
+    )
 
 
 if __name__ == "__main__":
