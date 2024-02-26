@@ -27,7 +27,11 @@ docker/build:
 .PHONY: docker
 docker: ## Build and run the chat-ui docker container locally
 docker: docker/build
-	docker run --rm -it --init -d --name chat-ui -e "CHATUI_BACKEND_URL=$(CHATUI_BACKEND_URL)" -p 9195:9195 chat-ui
+	docker run --rm -it --init -d \
+		--mount "type=bind,source=$(HOME)/.cache/chatui.sqlite3,target=/db/chatui.sqlite3" \
+		--name chat-ui \
+		-e "CHATUI_BACKEND_URL=$(CHATUI_BACKEND_URL)" \
+		-p 9195:9195 chat-ui
 
 .PHONY: llama
 llama: ## Run the llama server in docker
