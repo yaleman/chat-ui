@@ -23,7 +23,12 @@ createApp({
         if (!name || name === "null") {
             this.$nextTick(() => {
                 // $('#modal').modal('show');
-                document.getElementById("showNameModal").click();
+                const show_name_modal = document.getElementById("showNameModal");
+                if (show_name_modal) {
+                    show_name_modal.click();
+                } else {
+                    console.debug("Couldn't find showNameModal button!");
+                }
             });
         } else {
             data.name = name;
@@ -129,6 +134,17 @@ createApp({
                 console.error("Already have a websocket!");
                 return;
             }
+            // build a websocket URI
+            var loc = window.location, websocket_uri;
+            if (loc.protocol === "https:") {
+                websocket_uri = "wss:";
+            } else {
+                websocket_uri = "ws:";
+            }
+            websocket_uri += "//" + loc.host;
+            websocket_uri += loc.pathname + "/ws";
+
+
             let ws = new WebSocket("/ws");
             ws.addEventListener("message", (event) => {
                 const response = JSON.parse(event.data);
@@ -258,7 +274,6 @@ createApp({
                 if (response.ok) {
                     this.userModalSuccess = "User details saved!";
                     localStorage.setItem("name", this.name);
-                    // document.getElementById('closeModal').click()
                 }
                 // hide the bootstrap modal
             });
