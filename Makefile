@@ -22,11 +22,12 @@ run:
 .PHONY: docker/build
 docker/build: ## Build the chat-ui docker container
 docker/build:
-	docker build -t chat-ui .
+	docker buildx build --load -t chat-ui .
 
 .PHONY: docker
 docker: ## Build and run the chat-ui docker container locally
 docker: docker/build
+	touch ~/.cache/chatui.sqlite3
 	docker run --rm -it --init -d \
 		--mount "type=bind,source=$(HOME)/.cache/chatui.sqlite3,target=/db/chatui.sqlite3" \
 		--name chat-ui \
