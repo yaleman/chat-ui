@@ -142,10 +142,10 @@ createApp({
                 websocket_uri = "ws:";
             }
             websocket_uri += "//" + loc.host;
-            websocket_uri += loc.pathname + "/ws";
+            websocket_uri += "/ws";
 
 
-            let ws = new WebSocket("/ws");
+            let ws = new WebSocket(websocket_uri);
             ws.addEventListener("message", (event) => {
                 const response = JSON.parse(event.data);
                 // console.debug(response);

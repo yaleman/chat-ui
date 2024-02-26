@@ -21,6 +21,7 @@ from fastapi import (
     FastAPI,
     HTTPException,
     BackgroundTasks,
+    Request,
     WebSocket,
     WebSocketDisconnect,
 )
@@ -31,6 +32,7 @@ import sqlmodel
 from sqlalchemy.exc import NoResultFound
 
 from starlette.middleware.sessions import SessionMiddleware
+from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 
 # from chat_ui.backgroundpoller import BackgroundPoller
 from chat_ui.config import Config
@@ -47,7 +49,6 @@ from chat_ui.models import (
     validate_uuid,
 )
 
-logger.info("Config: {}", Config().model_dump())
 connect_args = {"check_same_thread": False}
 sqlite_url = f"sqlite:///{Config().db_path}"
 engine = sqlmodel.create_engine(sqlite_url, echo=False, connect_args=connect_args)
@@ -154,6 +155,7 @@ app.add_middleware(
     secret_key=random.sample(string.ascii_letters + string.digits, 32),
     session_cookie="chatsession",
 )
+app.add_middleware(ProxyHeadersMiddleware, trusted_hosts=["*"])
 
 
 def get_session() -> Generator[Session, None, None]:
@@ -223,6 +225,7 @@ async def post_user(
 async def create_job(
     job: NewJob,
     background_tasks: BackgroundTasks,
+    request: Request,
     session: Session = Depends(get_session),
 ) -> Job:
     logger.info("Got new job: {}", job)
@@ -232,6 +235,7 @@ async def create_job(
         userid=job.userid,
         prompt=job.prompt,
         request_type=job.request_type,
+        client_ip=request.client.host,
     )
     session.add(newjob)
     session.commit()
@@ -323,7 +327,9 @@ async def websocket_endpoint(
                             payload="no ID specified when asking for delete!",
                         )
             except Exception as error:
-                logger.error("websocket error={} ip={}", error, websocket.client.host)
+                logger.error(
+                    "websocket error={} src_ip={}", error, websocket.client.host
+                )
                 response = WebSocketResponse(message="error", payload=str(error))
             # logger.debug(
             #     "websocket ip={} msg={}",
@@ -333,10 +339,22 @@ async def websocket_endpoint(
             await websocket.send_text(response.as_message())
     except WebSocketDisconnect as disconn:
         logger.debug(
-            "websocket disconnected ip={} msg={}", websocket.client.host, disconn
+            "websocket disconnected src_ip={} msg={}", websocket.client.host, disconn
         )
+    except RuntimeError as error:
+        if (
+            "Unexpected ASGI message 'websocket.send', after sending 'websocket.close'"
+            in str(error)
+        ):
+            logger.debug(
+                "websocket message after send error={} ip={}",
+                error,
+                websocket.client.host,
+            )
+        else:
+            logger.error("websocket error={} src_ip={}", error, websocket.client.host)
     except Exception as error:
-        logger.error("websocket error={} ip={}", error, websocket.client.host)
+        logger.error("websocket error={} src_ip={}", error, websocket.client.host)
 
 
 @app.get("/healthcheck")

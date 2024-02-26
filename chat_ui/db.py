@@ -20,6 +20,7 @@ class Jobs(sqlmodel.SQLModel, table=True):
     """database representation of a job"""
 
     id: UUID = sqlmodel.Field(primary_key=True, default_factory=uuid4)
+    client_ip: str
     userid: UUID = sqlmodel.Field(foreign_key="users.userid")
     status: str
     created: datetime = sqlmodel.Field(datetime.utcnow())
