@@ -1,4 +1,5 @@
 **/__pycache__/*
+site/*
 venv/
 .vscode/
 .DS_Store
@@ -8,4 +9,3 @@ dist/
 build/
 history.json
 .envrc
-site/*
