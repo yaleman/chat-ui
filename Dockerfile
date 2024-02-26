@@ -1,5 +1,8 @@
 FROM python:3.12-slim
 
+HEALTHCHECK --interval=15s --timeout=3s \
+  CMD /usr/bin/curl -sf http://localhost:9195/healthcheck || exit 1
+
 # install curl for healthchecks
 RUN apt-get update && apt-get install -y --no-install-recommends curl \
     && apt-get clean \
