@@ -1,5 +1,9 @@
 FROM python:3.12-slim
 
+# install curl for healthchecks
+RUN apt-get update && apt-get install -y --no-install-recommends curl \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/* && rm -rf /var/cache/apt/
 RUN adduser appuser --disabled-password
 RUN mkdir /db/
 RUN chown appuser:appuser /db/
