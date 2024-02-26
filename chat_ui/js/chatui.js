@@ -1,7 +1,3 @@
-// import { createApp, ref } from 'https://unpkg.com/vue@3/dist/vue.esm-browser.js'
-
-
-
 const { createApp, ref } = Vue
 const jobPollIntervalMs = 5000;
 createApp({
@@ -24,7 +20,6 @@ createApp({
         let name = localStorage.getItem("name");
         if (!name || name === "null") {
             this.$nextTick(() => {
-                // $('#modal').modal('show');
                 const show_name_modal = document.getElementById("showNameModal");
                 if (show_name_modal) {
                     show_name_modal.click();
@@ -131,8 +126,6 @@ createApp({
                         || newJob.updated != this.jobs[newJob.id].updated
                     ) {
                         this.getJobData(newJob);
-                    } else {
-                        // console.debug("no update for job", newJob.id);
                     }
 
                 }
@@ -158,7 +151,6 @@ createApp({
             let ws = new WebSocket(websocket_uri);
             ws.addEventListener("message", (event) => {
                 const response = JSON.parse(event.data);
-                // console.debug(response);
                 switch (response.message) {
                     case "jobs":
                         this.fromWebSocketJobs(response);
@@ -174,7 +166,6 @@ createApp({
                         setTimeout(this.updateJobs, 500);
                         break;
                     case "waiting":
-                        console.debug(response.payload);
                         this.waitingJobs = response.payload;
                         break;
                     default:
@@ -207,7 +198,6 @@ createApp({
         updateJobs: function () {
             const payload = { "userid": this.userid, "message": "jobs" };
             this.checkForWebSocket();
-            // console.debug(this.ws);
             this.ws.send(JSON.stringify(payload));
         },
         sendPrompt: function () {
@@ -230,7 +220,7 @@ createApp({
                 console.error(`failed to send prompt: ${err}`);
             }).then(response => {
                 if (response.ok) {
-                    console.debug("prompt sent");
+                    console.debug("Prompt sent!");
                     this.currentPrompt = "";
                     setTimeout(this.updateJobs, 500);
                 }
@@ -243,7 +233,6 @@ createApp({
             this.ws.send(JSON.stringify(payload));
         },
         getJobData: function (job) {
-            // console.debug("getJobData", job);
             fetch(`/jobs/${this.userid}/${job.id}`, {
                 method: 'GET',
                 headers: {
@@ -255,7 +244,6 @@ createApp({
                 }
                 throw new Error('Failed to fetch job data');
             }).then(responseData => {
-                // console.debug("getJobData Response", responseData);
                 if (!(responseData.id in this.jobs)) {
                     if (responseData.status != "hidden") {
                         this.jobs[responseData.id] = responseData;
@@ -282,7 +270,7 @@ createApp({
                 "name": this.name,
                 "userid": this.userid
             };
-            // // post to /user with payload in json format
+            // post to /user with payload in json format
             fetch('/user', {
                 method: 'POST',
                 headers: {
