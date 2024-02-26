@@ -44,3 +44,9 @@ llama:
 		--hostname llama \
 		--name llama \
 		ghcr.io/abetlen/llama-cpp-python:latest
+
+.PHONY: checks
+checks: ## Run linting etc
+checks:
+	poetry run mypy --strict tests chat_ui
+	poetry run ruff tests chat_ui

@@ -17,6 +17,8 @@ createApp({
             currentPrompt: "",
             poller: null,
             ws: null,
+            waitingJobs: null,
+            waitingPoller: null,
         };
 
         let name = localStorage.getItem("name");
@@ -51,9 +53,13 @@ createApp({
     created() {
         this.getNewWebSocket();
         this.poller = setInterval(this.updateJobs, jobPollIntervalMs);
+        this.waitingPoller = setInterval(this.updateWaiting, 500);
         setTimeout(this.updateJobs, 500);
     },
     computed: {
+        haveWaitingJobs() {
+            return this.waitingJobs !== null && this.waitingJobs > 0;
+        },
         hasUserModalErrors() {
             return this.userModalErrors.length > 0;
         },
@@ -93,7 +99,11 @@ createApp({
         }
     },
     methods: {
-
+        updateWaiting: function () {
+            const payload = { "userid": this.userid, "message": "waiting" };
+            this.checkForWebSocket();
+            this.ws.send(JSON.stringify(payload));
+        },
         checkForWebSocket: function () {
             if (!this.isPolling) {
                 this.getNewWebSocket();
@@ -158,8 +168,14 @@ createApp({
                         delete this.jobs[response.payload.id];
                         break;
                     case "error":
-                        console.error("Error from server", response.payload);
-                        // TODO: show a message in the UI
+                        console.error("Error response from server", response.payload);
+                        break;
+                    case "resubmit":
+                        setTimeout(this.updateJobs, 500);
+                        break;
+                    case "waiting":
+                        console.debug(response.payload);
+                        this.waitingJobs = response.payload;
                         break;
                     default:
                         console.error("Unknown message", response.message);
@@ -220,8 +236,14 @@ createApp({
                 }
             });
         },
+        resubmitJob: function (jobid) {
+            console.debug("Resubmitting job", jobid);
+            const payload = { "userid": this.userid, "message": "resubmit", "payload": jobid };
+            this.checkForWebSocket();
+            this.ws.send(JSON.stringify(payload));
+        },
         getJobData: function (job) {
-            console.debug("getJobData", job);
+            // console.debug("getJobData", job);
             fetch(`/jobs/${this.userid}/${job.id}`, {
                 method: 'GET',
                 headers: {
@@ -233,7 +255,7 @@ createApp({
                 }
                 throw new Error('Failed to fetch job data');
             }).then(responseData => {
-                console.debug("getJobData Response", responseData);
+                // console.debug("getJobData Response", responseData);
                 if (!(responseData.id in this.jobs)) {
                     if (responseData.status != "hidden") {
                         this.jobs[responseData.id] = responseData;

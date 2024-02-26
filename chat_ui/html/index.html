@@ -49,6 +49,7 @@
             </button>
 
             <ul class="nav justify-content-end">
+
               <!-- <li class="nav-item px-1">
                 <button type="button" class="btn btn-light" @click="startPoller"
                   data-id="startBackgroundPolling">
@@ -100,170 +101,172 @@
                   <div class="row py-4">
                     <div class="col-12">
                       <h3>Debugging Details</h3>
-                      User ID:{{userid}}
-                    </div>
+                      <p>User ID:{{userid}}</p>
+                      <p>System-wide pending jobs: {{ waitingJobs }}</p>
+                    </li>
+                  </div>
+                </div>
+
+                <div class="row">
+                  <div class="col-6" v-if="!isPolling">
+                    <button type="button" class="btn btn-success px-2"
+                      @click="startPoller"
+                      data-id="startBackgroundPolling" v-if="!isPolling">
+                      Start Job Polling
+                    </button>
                   </div>
 
-                  <div class="row">
-                    <div class="col-6" v-if="!isPolling">
-                      <button type="button" class="btn btn-success px-2"
-                        @click="startPoller"
-                        data-id="startBackgroundPolling" v-if="!isPolling">
-                        Start Job Polling
-                      </button>
+                  <div class="col-6" v-if="isPolling">
+                    <button type="button" class="btn btn-danger px-2"
+                      @click="stopPoller"
+                      data-id="stopBackgroundPolling">
+                      Stop Job Polling
                     </div>
 
-                    <div class="col-6" v-if="isPolling">
-                      <button type="button" class="btn btn-danger px-2"
-                        @click="stopPoller"
-                        data-id="stopBackgroundPolling">
-                        Stop Job Polling
-                      </div>
+                    <div class="alert alert-danger"
+                      v-if="hasUserModalErrors">{{
+                      userModalErrors }}</div> <div
+                      class="alert alert-danger"
+                      v-if="hasUserModalErrors">{{
+                      userModalErrors }}asdfadsf</div>
 
-                      <div class="alert alert-danger"
-                        v-if="hasUserModalErrors">{{
-                        userModalErrors }}</div> <div
-                        class="alert alert-danger"
-                        v-if="hasUserModalErrors">{{
-                        userModalErrors }}asdfadsf</div>
-
-                    </div>
                   </div>
-                  <div class="modal-footer">
-                    <!-- TODO: disable the save button if it's empty -->
-                    <button type="submit" class="btn btn-primary">Save
-                      changes</button>
+                </div>
+                <div class="modal-footer">
+                  <!-- TODO: disable the save button if it's empty -->
+                  <button type="submit" class="btn btn-primary">Save
+                    changes</button>
+                </div>
+              </div>
+            </div>
+          </form>
+        </div>
+        <!-- end of the modal -->
+        <div class="container-fluid p-4">
+          <form name="prompt" id="prompt" @submit.prevent="sendPrompt">
+            <div class="row">
+              <div class="col-6">
+
+                <div class="mb-3">
+                  <label for="name" class="form-label">Your Name</label>
+                  <input type="text" id="name"
+                    class="form-control form-control-lg"
+                    v-model.lazy.trim="name"
+                    placeholder="Your name">
+                </div>
+
+                <div class="mb-3">
+                  <label for="use_case" class="form-label">Use Case</label>
+                  <select class="form-select form-select-lg mb-3"
+                    id="use_case"
+                    v-model="useCase"
+                    aria-label=".form-select-lg example">
+                    <option value="plain">Plain Requests</option>
+                    <option value="prompt_injection">Prompt
+                      Injection</option>
+                    <option value="sensitive_disclosure">Sensitive
+                      Information
+                      Disclosure</option>
+                    <option value="insecure_output">Insecure Output</option>
+                  </select>
+                </div>
+
+                <div class="mb-3">
+                  <label for="promptText"
+                    class="form-label">Textarea</label>
+                  <textarea class="form-control"
+                    :class="{'is-invalid': !currentPrompt}"
+                    id="promptText" v-model="currentPrompt"></textarea>
+                  <div class="invalid-feedback" v-if="!currentPrompt">
+                    Please enter a message in the textarea.
+                  </div>
+
+                  <div class="mb-3 py-4">
+                    <button type="submit" class="btn btn-primary btn-lg">
+                      Send
+                      message</button>
                   </div>
                 </div>
               </div>
-            </form>
-          </div>
-          <!-- end of the modal -->
-          <div class="container-fluid p-4">
-            <form name="prompt" id="prompt" @submit.prevent="sendPrompt">
-              <div class="row">
-                <div class="col-6">
+              <div class="col-6" v-if="!this.noJobs">
+                <h1>Submitted Prompts</h1>
 
-                  <div class="mb-3">
-                    <label for="name" class="form-label">Your Name</label>
-                    <input type="text" id="name"
-                      class="form-control form-control-lg"
-                      v-model.lazy.trim="name"
-                      placeholder="Your name">
-                  </div>
+                <ul style="list-style-type: none">
+                  <li v-for="job in getJobList" :key="job.id">
+                    <div class="card">
+                      <div class="card-header py-3">
 
-                  <div class="mb-3">
-                    <label for="use_case" class="form-label">Use Case</label>
-                    <select class="form-select form-select-lg mb-3"
-                      id="use_case"
-                      v-model="useCase"
-                      aria-label=".form-select-lg example">
-                      <option value="plain">Plain Requests</option>
-                      <option value="prompt_injection">Prompt
-                        Injection</option>
-                      <option value="sensitive_disclosure">Sensitive
-                        Information
-                        Disclosure</option>
-                      <option value="insecure_output">Insecure Output</option>
-                    </select>
-                  </div>
-
-                  <div class="mb-3">
-                    <label for="promptText"
-                      class="form-label">Textarea</label>
-                    <textarea class="form-control"
-                      :class="{'is-invalid': !currentPrompt}"
-                      id="promptText" v-model="currentPrompt"></textarea>
-                    <div class="invalid-feedback" v-if="!currentPrompt">
-                      Please enter a message in the textarea.
-                    </div>
-
-                    <div class="mb-3 py-4">
-                      <button type="submit" class="btn btn-primary btn-lg">
-                        Send
-                        message</button>
-                    </div>
-                  </div>
-                </div>
-                <div class="col-6" v-if="!this.noJobs">
-                  <h1>Submitted Prompts</h1>
-
-                  <ul style="list-style-type: none">
-                    <li v-for="job in getJobList" :key="job.id">
-                      <div class="card">
-                        <div class="card-header py-3">
-
-                          <div
-                            style="cursor: pointer; width: 30px; height: 30px; border: 1px solid black; background-color: white; text-align: center"
-                            class="float-end mx-2"
-                            id="delete_job_{{job.id}}"
-                            @click="deleteJob(job.id)">
-                            <img src="/img/trash.svg"
-                              title="Delete this task"
-                              style="cursor: pointer; width: 20px; height: 20px;" />
-                          </div>
-                          <div
-                            style="cursor: pointer; width: 30px; height: 30px; border: 1px solid black; background-color: white; text-align: center"
-                            class="float-end"
-                            id="refresh_job_{{job.id}}"
-                            @click="getJobData(job)">
-                            <img src="/img/arrow-clockwise.svg"
-                              title="Refresh this task"
-                              style="cursor: pointer; width: 20px; height: 20px;" />
-                          </div>
-                          <span v-if="job.prompt">
-                            <h5>Prompt</h5>
-                            {{job.prompt}}
-                          </span>
+                        <div
+                          style="cursor: pointer; width: 30px; height: 30px; border: 1px solid black; background-color: white; text-align: center"
+                          class="float-end mx-2"
+                          id="delete_job_{{job.id}}"
+                          @click="deleteJob(job.id)">
+                          <img src="/img/trash.svg"
+                            title="Delete this task"
+                            style="cursor: pointer; width: 20px; height: 20px;" />
                         </div>
-                        <ul class="list-group list-group-flush">
-                          <li class="list-group-item py-3"
-                            v-if="job.response">
-                            <h5>Response</h5>
-                            {{job.response}}
-                          </li>
-                          <li class="list-group-item">
-                            <span class="text-muted" v-if="job.updated">
-                              Last Update: {{job.updated}}
-                            </span>
-                            <span class="text-muted"
-                              v-if="!job.updated"><br />
-                              Created: {{job.created}}
-                            </span>
-                            <br />Request type: {{job.request_type}}
-                            <!-- <span v-if="job.runtime"><br />
+                        <div
+                          style="cursor: pointer; width: 30px; height: 30px; border: 1px solid black; background-color: white; text-align: center"
+                          class="float-end"
+                          id="refresh_job_{{job.id}}"
+                          @click="getJobData(job)">
+                          <img src="/img/arrow-clockwise.svg"
+                            title="Refresh this task"
+                            style="cursor: pointer; width: 20px; height: 20px;" />
+                        </div>
+                        <span v-if="job.prompt">
+                          <h5>Prompt</h5>
+                          {{job.prompt}}
+                        </span>
+                      </div>
+                      <ul class="list-group list-group-flush">
+                        <li class="list-group-item py-3"
+                          v-if="job.response">
+                          <h5>Response</h5>
+                          {{job.response}}
+                        </li>
+                        <li class="list-group-item">
+                          <span class="text-muted" v-if="job.updated">
+                            Last Update: {{job.updated}}
+                          </span>
+                          <span class="text-muted"
+                            v-if="!job.updated"><br />
+                            Created: {{job.created}}
+                          </span>
+                          <br />Request type: {{job.request_type}}
+                          <!-- <span v-if="job.runtime"><br />
                           Runtime: {{job.runtime}}
                         </span> -->
-                            <span v-if="job.runtime"><br />
-                              Runtime: {{Math.round(job.runtime)}} seconds
-                            </span>
-                            <!-- <h6 class="card-subtitle mb-2 text-muted">
+                          <span v-if="job.runtime"><br />
+                            Runtime: {{Math.round(job.runtime)}} seconds
+                          </span>
+                          <!-- <h6 class="card-subtitle mb-2 text-muted">
                           ID: {{ job.id }}
                         </h6> -->
-                            <h6 class="mb-2"
-                              :class="colorFromStatus(job.status) ">Status: {{
-                              job.status }}<div
-                                style="cursor: pointer; width: 30px; height: 30px; border: 1px solid black; background-color: #ffc107; text-align: center"
-                                class="my-2 mx-2"
-                                id="resubmit_job_{{job.id}}"
-                                @click="resubmitJob(job.id)"
-                                v-if="job.status=='error'">
-                                <img src="/img/arrow-up.svg"
-                                  title="Re-submit this task"
-                                  style="cursor: pointer; width: 20px; height: 20px; margin-top: 4px;" />
-                              </div></h6>
-                          </li>
-                        </ul>
-                      </div>
-                    </li>
-                  </ul>
-                </div>
+                          <h6 class="mb-2"
+                            :class="colorFromStatus(job.status) ">Status: {{
+                            job.status }}<div
+                              style="cursor: pointer; width: 30px; height: 30px; border: 1px solid black; background-color: #ffc107; text-align: center"
+                              class="my-2 mx-2"
+                              id="resubmit_job_{{job.id}}"
+                              @click="resubmitJob(job.id)"
+                              v-if="job.status=='error'">
+                              <img src="/img/arrow-up.svg"
+                                title="Re-submit this task"
+                                style="cursor: pointer; width: 20px; height: 20px; margin-top: 4px;" />
+                            </div></h6>
+                        </li>
+                      </ul>
+                    </div>
+                  </li>
+                </ul>
               </div>
-            </form>
+            </div>
+          </form>
 
-          </div>
-        </body>
-      </main>
+        </div>
+      </body>
+    </main>
 
-      <script src="/js/chatui.js"></script>
-    </html>
+    <script src="/js/chatui.js"></script>
+  </html>

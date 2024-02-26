@@ -114,7 +114,7 @@ class UserDetail(UserForm):
     updated: Optional[datetime] = None
 
 
-WEBSOCKET_MESSAGES = ["jobs", "delete", "error"]
+WEBSOCKET_MESSAGES = ["jobs", "delete", "error", "resubmit", "waiting"]
 
 
 def validate_websocket_message(v: str) -> str:
