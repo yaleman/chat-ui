@@ -26,6 +26,7 @@ aiohttp = "^3.9.3"
 requests = "^2.31.0"
 openai = "^1.12.0"
 sqlmodel = "^0.0.14"
+prometheus-fastapi-instrumentator = "^6.1.0"
 
 [tool.poetry.group.dev.dependencies]
 mypy = "^1.5.0"

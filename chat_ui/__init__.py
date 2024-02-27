@@ -22,6 +22,7 @@ from fastapi import (
 )
 from fastapi.responses import FileResponse, HTMLResponse
 from loguru import logger
+from prometheus_fastapi_instrumentator import Instrumentator
 from sqlmodel import Session, select
 import sqlmodel
 from sqlalchemy.exc import NoResultFound
@@ -60,6 +61,8 @@ engine = sqlmodel.create_engine(sqlite_url, echo=False, connect_args=connect_arg
 async def lifespan(app: FastAPI) -> AsyncGenerator[Any, Any]:
     """runs the background poller as the app is running"""
 
+    instrumentator.expose(app)
+
     if "pytest" not in sys.modules:
 
         t = BackgroundPoller(engine)
@@ -93,6 +96,7 @@ app.add_middleware(
     session_cookie="chatsession",
 )
 app.add_middleware(GZipMiddleware)
+instrumentator = Instrumentator().instrument(app)
 
 
 def get_session() -> Generator[Session, None, None]:
