@@ -101,7 +101,10 @@ createApp({
         updateWaiting: function () {
             const payload = { "userid": this.userid, "message": "waiting" };
             this.checkForWebSocket();
-            this.ws.send(JSON.stringify(payload));
+            // it's OK to drop this if we don't have it going already
+            if (this.ws.readyState === WebSocket.OPEN) {
+                this.ws.send(JSON.stringify(payload));
+            }
         },
         checkForWebSocket: function () {
             if (!this.isPolling) {
@@ -116,8 +119,12 @@ createApp({
                 "userid": this.userid,
                 "payload": jobid,
             }
-            this.ws.send(JSON.stringify(payload));
-            delete this.jobs[jobid];
+            if (this.ws.readyState === WebSocket.OPEN) {
+                this.ws.send(JSON.stringify(payload));
+                delete this.jobs[jobid];
+            } else {
+                setTimeout(() => { this.deleteJob(jobid) }, 1000)
+            }
         },
         // handle the "jobs" response from the websocket
         fromWebSocketJobs: function (response) {
@@ -147,10 +154,11 @@ createApp({
             })
         },
         getNewWebSocket: function () {
-            if (this.ws !== null) {
-                console.error("Already have a websocket!");
+            if (this.ws !== null && !(ws.readyState === WebSocket.CLOSED || ws.readyState === WebSocket.CLOSING)) {
+                console.debug("Already have a working websocket!");
                 return;
             }
+
             // build a websocket URI
             var loc = window.location, websocket_uri;
             if (loc.protocol === "https:") {
@@ -213,7 +221,10 @@ createApp({
         updateJobs: function () {
             const payload = { "userid": this.userid, "message": "jobs" };
             this.checkForWebSocket();
-            this.ws.send(JSON.stringify(payload));
+            // it's OK to drop this if we don't have it going already
+            if (this.ws.readyState === WebSocket.OPEN) {
+                this.ws.send(JSON.stringify(payload));
+            }
         },
         sendPrompt: function () {
             const payload = {
@@ -245,7 +256,13 @@ createApp({
             console.debug("Resubmitting job", jobid);
             const payload = { "userid": this.userid, "message": "resubmit", "payload": jobid };
             this.checkForWebSocket();
-            this.ws.send(JSON.stringify(payload));
+
+            if (this.ws.readyState === WebSocket.OPEN) {
+                this.ws.send(JSON.stringify(payload));
+            } else {
+                // try again later
+                setTimeout(() => { this.resubmitJob(jobid) }, 1000);
+            }
         },
         getJobData: function (job) {
             fetch(`/jobs/${this.userid}/${job.id}`, {

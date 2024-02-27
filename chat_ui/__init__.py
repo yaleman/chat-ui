@@ -2,7 +2,6 @@
 
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta
-from functools import lru_cache
 import json
 import os
 import os.path
@@ -11,7 +10,7 @@ import string
 from pathlib import Path
 import sys
 
-from typing import Any, AsyncGenerator, Generator, List, Tuple
+from typing import Any, AsyncGenerator, Generator, List
 from fastapi import (
     Depends,
     FastAPI,
@@ -23,7 +22,7 @@ from fastapi import (
 )
 from fastapi.responses import FileResponse, HTMLResponse
 from loguru import logger
-from sqlmodel import Session, or_, select
+from sqlmodel import Session, select
 import sqlmodel
 from sqlalchemy.exc import NoResultFound
 
@@ -46,7 +45,7 @@ from chat_ui.models import (
     WebSocketResponse,
     validate_uuid,
 )
-from chat_ui.utils import get_client_ip
+from chat_ui.utils import get_client_ip, get_waiting_jobs
 
 logger.remove()
 logger.add(sink=sink)
@@ -237,13 +236,31 @@ async def websocket_resubmit(
 
         query = select(Jobs).where(Jobs.id == data.payload, Jobs.userid == data.userid)
         res = session.exec(query).one()
-        res.status = "created"
-        res.response = ""
-        res.updated = datetime.utcnow()
-        session.add(res)
-        session.commit()
-        session.refresh(res)
-        response = WebSocketResponse(message="resubmit", payload=res.model_dump_json())
+        # only accept the resubmit if it was an error
+        if res.status == "error":
+            res.status = "created"
+            res.response = ""
+            res.updated = datetime.utcnow()
+            session.add(res)
+            session.commit()
+            session.refresh(res)
+            logger.debug(
+                "resubmitted", src_ip=get_client_ip(websocket), **data.model_dump()
+            )
+            response = WebSocketResponse(
+                message="resubmit", payload=res.model_dump_json()
+            )
+        else:
+            logger.debug(
+                "rejected resubmit due to job status",
+                status=res.status,
+                src_ip=get_client_ip(websocket),
+                **data.model_dump(),
+            )
+            response = WebSocketResponse(
+                message="error",
+                payload=f"Job {data.payload} is not in an error state",
+            )
     except NoResultFound:
         logger.debug(
             "No jobs found", src_ip=get_client_ip(websocket), **data.model_dump()
@@ -264,21 +281,6 @@ async def websocket_resubmit(
             payload=f"Error handling {data.payload}",
         )
     return response
-
-
-@lru_cache(maxsize=2)
-def get_waiting_jobs(session: Session) -> Tuple[datetime, int]:
-    try:
-        res = (
-            session.query(Jobs)
-            .where(or_(Jobs.status == "created", Jobs.status == "running"))
-            .count()
-        )
-        logger.info("pending jobs", pending_jobs=res)
-        return (datetime.utcnow(), res)
-    except Exception as error:
-        logger.error("Failed to get waiting count", error=error)
-        return (datetime.utcnow(), 0)
 
 
 async def websocket_waiting(
