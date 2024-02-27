@@ -44,7 +44,7 @@ class BackgroundPoller(threading.Thread):
             temperature=0.7,
             stream=False,
         )
-        logger.info(completion)
+        logger.debug("completion result", **completion.model_dump())
         response = completion.choices[0].message.content
         if completion.usage is not None:
             usage = completion.usage.model_dump()
@@ -79,7 +79,7 @@ class BackgroundPoller(threading.Thread):
                     session.commit()
                     session.refresh(job)
                     try:
-                        logger.debug({"message": "starting job", **job.model_dump()})
+                        logger.debug("starting job", **job.model_dump())
                         job = self.event_loop.run_until_complete(self.handle_job(job))
                         job.updated = datetime.utcnow()
                         session.add(job)
@@ -95,10 +95,8 @@ class BackgroundPoller(threading.Thread):
                             job.status = "error"
                             if "Connection error" in str(error):
                                 logger.error(
-                                    {
-                                        "message": "Failed to connect to backend!",
-                                        "job": job.model_dump(),
-                                    }
+                                    "Failed to connect to backend!",
+                                    **job.model_dump(),
                                 )
                                 job.response = (
                                     "Failed to connect to backend, try again please!"
@@ -112,6 +110,6 @@ class BackgroundPoller(threading.Thread):
                             session.refresh(job)
 
                 except NoResultFound:
-                    logger.debug("No waiting job found")
+                    logger.debug("No waiting jobs found")
                     time.sleep(1)
         logger.info("Background poller is stopping")

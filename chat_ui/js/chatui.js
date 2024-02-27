@@ -1,5 +1,7 @@
 const { createApp, ref } = Vue
-const jobPollIntervalMs = 5000;
+const jobPollIntervalMs = 2500;
+const defaultNextRunMs = 250;
+
 createApp({
     data() {
         var data = {
@@ -15,6 +17,7 @@ createApp({
             ws: null,
             waitingJobs: null,
             waitingPoller: null,
+            initialLoad: true,
         };
 
         let name = localStorage.getItem("name");
@@ -48,8 +51,8 @@ createApp({
     created() {
         this.getNewWebSocket();
         this.poller = setInterval(this.updateJobs, jobPollIntervalMs);
-        this.waitingPoller = setInterval(this.updateWaiting, 500);
-        setTimeout(this.updateJobs, 500);
+        this.waitingPoller = setInterval(this.updateWaiting, defaultNextRunMs);
+        setTimeout(this.updateJobs, defaultNextRunMs);
     },
     computed: {
         haveWaitingJobs() {
@@ -67,6 +70,7 @@ createApp({
         hasTasks() {
             return this.tasks.length > 0;
         },
+
         noJobs() {
             return Object.keys(this.jobs).length === 0;
         },
@@ -122,18 +126,28 @@ createApp({
                     this.jobs[newJob.id] = newJob;
                     this.getJobData(newJob);
                 } else {
-                    if (newJob.status != this.jobs[newJob.id].status
-                        || newJob.updated != this.jobs[newJob.id].updated
+                    const existingJob = this.jobs[newJob.id];
+
+                    // because we parse it going into the internal state, and comparing date objects is weird. thanks JavaScript.
+                    const newDate = new Date(newJob.updated).toLocaleString();
+                    const existingDate = new Date(existingJob.updated).toLocaleString();
+
+                    if (newJob.status != existingJob.status
                     ) {
+                        console.debug(`Updating job id=${newJob.id} because status ${existingJob.status} != ${newJob.status}`);
                         this.getJobData(newJob);
                     }
-
+                    else if (newDate !== existingDate
+                    ) {
+                        console.debug(`Updating job id=${newJob.id} because 'updated' ${existingDate} != ${newDate}`);
+                        this.getJobData(newJob);
+                    }
                 }
 
             })
         },
         getNewWebSocket: function () {
-            if (this.ws != null) {
+            if (this.ws !== null) {
                 console.error("Already have a websocket!");
                 return;
             }
@@ -154,6 +168,7 @@ createApp({
                 switch (response.message) {
                     case "jobs":
                         this.fromWebSocketJobs(response);
+                        this.initialLoad = false;
                         break;
                     case "delete":
                         console.debug("Removing job", response.payload);
@@ -163,7 +178,7 @@ createApp({
                         console.error("Error response from server", response.payload);
                         break;
                     case "resubmit":
-                        setTimeout(this.updateJobs, 500);
+                        setTimeout(this.updateJobs, defaultNextRunMs);
                         break;
                     case "waiting":
                         this.waitingJobs = response.payload;
@@ -222,7 +237,7 @@ createApp({
                 if (response.ok) {
                     console.debug("Prompt sent!");
                     this.currentPrompt = "";
-                    setTimeout(this.updateJobs, 500);
+                    setTimeout(this.updateJobs, defaultNextRunMs);
                 }
             });
         },
