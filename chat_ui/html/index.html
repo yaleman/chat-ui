@@ -188,6 +188,11 @@
                   </div>
                 </div>
               </div>
+              <div class="col-6" v-if="this.initialLoad"><div
+                  style="padding: 1.25rem; border: 0.1rem solid  lightgrey; border-left-width: 0.25rem; border-left-color: #6610f2; border-top-left-radius: 0.25rem;border-bottom-left-radius: 0.25rem;">
+                  Checking for existing prompts...
+                </div>
+              </div>
               <div class="col-6" v-if="!this.noJobs">
                 <h1>Submitted Prompts</h1>
 
@@ -245,16 +250,22 @@
                         </h6> -->
                           <h6 class="mb-2"
                             :class="colorFromStatus(job.status) ">Status: {{
-                            job.status }}<div
-                              style="cursor: pointer; width: 30px; height: 30px; border: 1px solid black; background-color: #ffc107; text-align: center"
-                              class="my-2 mx-2"
-                              id="resubmit_job_{{job.id}}"
-                              @click="resubmitJob(job.id)"
-                              v-if="job.status=='error'">
+                            job.status }}
+                          </h6>
+                          <div
+                            id="resubmit_job_{{job.id}}"
+                            @click="resubmitJob(job.id)"
+                            v-if="job.status=='error'">
+                            <div
+                              style="cursor: pointer; height: 2.0em; border: 1px solid black; background-color: #ffc107; text-align: center"
+                              class="my-2 mx-2">
                               <img src="/img/arrow-up.svg"
                                 title="Re-submit this task"
-                                style="cursor: pointer; width: 20px; height: 20px; margin-top: 4px;" />
-                            </div></h6>
+                                style="cursor: pointer; width: 20px; height: 20px; margin-top: 4px;" />Try
+                              again
+                            </div>
+
+                          </div>
                         </li>
                       </ul>
                     </div>

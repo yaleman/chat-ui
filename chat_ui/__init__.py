@@ -34,6 +34,7 @@ from chat_ui.backgroundpoller import BackgroundPoller
 # from chat_ui.backgroundpoller import BackgroundPoller
 from chat_ui.config import Config
 from chat_ui.db import Jobs, Users
+from chat_ui.logs import sink
 
 from chat_ui.models import (
     Job,
@@ -46,6 +47,10 @@ from chat_ui.models import (
     validate_uuid,
 )
 from chat_ui.utils import get_client_ip
+
+logger.remove()
+logger.add(sink=sink)
+
 
 connect_args = {"check_same_thread": False}
 sqlite_url = f"sqlite:///{Config().db_path}"
@@ -69,7 +74,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[Any, Any]:
             sqlmodel.SQLModel.metadata.create_all(engine)
             jobs = session.exec(select(Jobs).where(Jobs.status == "running")).all()
             for job in jobs:
-                logger.warning("Job id={} was running, setting to error", job.id)
+                logger.warning("Job was running, setting to error", job_id=job.id)
 
                 job.status = "error"
                 job.response = "Server restarted, please try this again"
@@ -160,7 +165,7 @@ async def create_job(
     request: Request,
     session: Session = Depends(get_session),
 ) -> Job:
-    logger.info("Got new job: {}", job)
+    logger.info("New job", src_ip=get_client_ip(request), **job.model_dump())
 
     client_ip = get_client_ip(request)
 
@@ -211,10 +216,14 @@ async def websocket_jobs(
             select(Jobs).where(Jobs.userid == data.userid, Jobs.status != "hidden")
         ).all()
         payload = [Job.from_jobs(job) for job in jobs]
-        # logger.debug(jobs)
         response = WebSocketResponse(message="jobs", payload=payload)
     except Exception as error:
-        logger.error("websocket error={} ip={}", error, get_client_ip(websocket))
+        logger.error(
+            "websocket_jobs error",
+            error=error,
+            src_ip=get_client_ip(websocket),
+            **data.model_dump(),
+        )
         response = WebSocketResponse(message="error", payload="Failed to get job list!")
     return response
 
@@ -225,6 +234,7 @@ async def websocket_resubmit(
     websocket: WebSocket,
 ) -> WebSocketResponse:
     try:
+
         query = select(Jobs).where(Jobs.id == data.payload, Jobs.userid == data.userid)
         res = session.exec(query).one()
         res.status = "created"
@@ -235,20 +245,23 @@ async def websocket_resubmit(
         session.refresh(res)
         response = WebSocketResponse(message="resubmit", payload=res.model_dump_json())
     except NoResultFound:
-        logger.debug("No jobs found for userid={} id={}", data.userid, data.payload)
+        logger.debug(
+            "No jobs found", src_ip=get_client_ip(websocket), **data.model_dump()
+        )
         response = WebSocketResponse(
             message="error",
-            payload=f"No job ID found matching {id}",
+            payload=f"No job ID found matching {data.payload}",
         )
     except Exception as error:
         logger.error(
-            "Failed to handle resubmit request id={} error={}",
-            id,
-            error,
+            "Failed to handle resubmit request",
+            error=error,
+            src_ip=get_client_ip(websocket),
+            **data.model_dump(),
         )
         response = WebSocketResponse(
             message="error",
-            payload=f"Error handling {id}",
+            payload=f"Error handling {data.payload}",
         )
     return response
 
@@ -261,10 +274,10 @@ def get_waiting_jobs(session: Session) -> Tuple[datetime, int]:
             .where(or_(Jobs.status == "created", Jobs.status == "running"))
             .count()
         )
-        logger.debug("Waiting jobs: {}", res)
+        logger.info("pending jobs", pending_jobs=res)
         return (datetime.utcnow(), res)
     except Exception as error:
-        logger.debug("Failed to get waiting count: {}", error)
+        logger.error("Failed to get waiting count", error=error)
         return (datetime.utcnow(), 0)
 
 
@@ -286,7 +299,12 @@ async def websocket_waiting(
         )
 
     except Exception as error:
-        logger.error("websocket error={} ip={}", error, get_client_ip(websocket))
+        logger.error(
+            "websocket error",
+            error=error,
+            src_ip=get_client_ip(websocket),
+            **data.model_dump(),
+        )
         response = WebSocketResponse(
             message="error", payload="Failed to get count of pending jobs..."
         )
@@ -297,28 +315,38 @@ async def websocket_delete(
     data: WebSocketMessage, session: Session, websocket: WebSocket
 ) -> WebSocketResponse:
     if data.payload is not None:
-        id = validate_uuid(data.payload)
+        job_id = validate_uuid(data.payload)
         try:
-            query = select(Jobs).where(Jobs.id == id, Jobs.userid == data.userid)
+            query = select(Jobs).where(Jobs.id == job_id, Jobs.userid == data.userid)
             res = session.exec(query).one()
             res.status = "hidden"
             res.updated = datetime.utcnow()
             session.add(res)
             session.commit()
             session.refresh(res)
+            logger.info(
+                "Job deleted",
+                src_ip=get_client_ip(websocket),
+                **data.model_dump(),
+            )
             response = WebSocketResponse(
                 message="delete", payload=res.model_dump_json()
             )
         except NoResultFound:
-            logger.debug("No jobs found for userid={}", data.userid)
+            logger.info(
+                "Delete request but no job found",
+                job_id=job_id,
+                src_ip=get_client_ip(websocket),
+                **data.model_dump(),
+            )
             response = WebSocketResponse(
                 message="error",
-                payload=f"No job ID found matching {id}",
+                payload=f"No job ID found matching {job_id}",
             )
     else:
         response = WebSocketResponse(
             message="error",
-            payload="no ID specified when asking for delete!",
+            payload="No ID specified when asking for delete!",
         )
     return response
 
@@ -332,14 +360,13 @@ async def websocket_endpoint(
     await websocket.accept()
     if websocket.client is None:
         raise HTTPException(status_code=500, detail="Failed to accept websocket")
-    logger.debug("websocket accepted from ip={}", websocket.client.host)
+    logger.debug("New websocket connection", src_ip=get_client_ip(websocket))
     try:
         while True:
             response = WebSocketResponse(message="error", payload="unknown message")
             try:
-                data = WebSocketMessage.model_validate_json(
-                    await websocket.receive_text()
-                )
+                raw_msg = await websocket.receive_text()
+                data = WebSocketMessage.model_validate_json(raw_msg)
                 if data.message == "jobs":
                     response = await websocket_jobs(data, session, websocket)
                 elif data.message == "delete":
@@ -350,18 +377,16 @@ async def websocket_endpoint(
                     response = await websocket_waiting(data, session, websocket)
             except Exception as error:
                 logger.error(
-                    "websocket error={} src_ip={}", error, websocket.client.host
+                    "websocket error",
+                    error=error,
+                    src_ip=get_client_ip(websocket),
+                    raw_msg=raw_msg,
                 )
                 response = WebSocketResponse(message="error", payload=str(error))
-            # logger.debug(
-            #     "websocket ip={} msg={}",
-            #     websocket.client.host,
-            #     response.as_message(),
-            # )
             await websocket.send_text(response.as_message())
     except WebSocketDisconnect as disconn:
         logger.debug(
-            "websocket disconnected src_ip={} msg={}", websocket.client.host, disconn
+            f"Websocket disconnected: {disconn}", src_ip=get_client_ip(websocket)
         )
     except RuntimeError as error:
         if (
@@ -369,14 +394,18 @@ async def websocket_endpoint(
             in str(error)
         ):
             logger.debug(
-                "websocket message after send error={} ip={}",
-                error,
-                websocket.client.host,
+                "Websocket_message after send",
+                error=str(error),
+                src_ip=get_client_ip(websocket),
             )
         else:
-            logger.error("websocket error={} src_ip={}", error, websocket.client.host)
+            logger.error(
+                "websocket error", src_ip=get_client_ip(websocket), error=error
+            )
     except Exception as error:
-        logger.error("websocket error={} src_ip={}", error, websocket.client.host)
+        logger.error(
+            "websocket exception", src_ip=get_client_ip(websocket), error=error
+        )
 
 
 @app.get("/healthcheck")
