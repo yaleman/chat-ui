@@ -34,7 +34,17 @@ docker: docker/build
 		-e "CHATUI_BACKEND_URL=$(CHATUI_BACKEND_URL)" \
 		-p 9195:9195 chat-ui
 
-.PHONY: llama
+.PHONY: llama/local
+llama/local: ## Run the llama server locally
+llama/local:
+	poetry run python -m llama_cpp.server \
+		--model "$(MODEL_PATH)" \
+		--chat_format "mistral-instruct" \
+		--port 9196 \
+		--n_gpu_layers -1 \
+		--interrupt_requests False
+
+.PHONY: llama/docker
 llama: ## Run the llama server in docker
 llama:
 	docker run --rm -it -p 9196:8000 \

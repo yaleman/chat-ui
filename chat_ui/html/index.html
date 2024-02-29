@@ -20,7 +20,7 @@
     <!-- <link rel="stylesheet"
       href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css"> -->
 
-    <title>Chat UI</title>
+    <title>Wombat Chat</title>
     <link rel="stylesheet" href="/css/css.css" />
     <script type="importmap">
       {
@@ -162,6 +162,7 @@
                     v-model="useCase"
                     aria-label=".form-select-lg example">
                     <option value="plain">Plain Requests</option>
+                    <option value="dos">Denial of Service</option>
                     <option value="prompt_injection">Prompt
                       Injection</option>
                     <option value="sensitive_disclosure">Sensitive
@@ -220,7 +221,6 @@
                             style="cursor: pointer; width: 20px; height: 20px;" />
                         </div>
                         <span v-if="job.prompt">
-                          <h5>Prompt</h5>
                           {{job.prompt}}
                         </span>
                       </div>
@@ -238,20 +238,16 @@
                             v-if="!job.updated"><br />
                             Created: {{job.created}}
                           </span>
+                          <!-- TODO: expose the token usage metadata -->
                           <br />Request type: {{job.request_type}}
-                          <!-- <span v-if="job.runtime"><br />
-                          Runtime: {{job.runtime}}
-                        </span> -->
                           <span v-if="job.runtime"><br />
                             Runtime: {{Math.round(job.runtime)}} seconds
                           </span>
-                          <!-- <h6 class="card-subtitle mb-2 text-muted">
-                          ID: {{ job.id }}
-                        </h6> -->
                           <h6 class="mb-2"
-                            :class="colorFromStatus(job.status) ">Status: {{
-                            job.status }}
+                            :class="colorFromStatus(job.status) ">Status:
+                            {{ job.status }}
                           </h6>
+                          <div>{{parseMetadata(job.metadata).usage}}</div>
                           <div
                             id="resubmit_job_{{job.id}}"
                             @click="resubmitJob(job.id)"

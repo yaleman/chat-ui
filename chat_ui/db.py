@@ -2,8 +2,6 @@ from datetime import datetime
 
 from typing import Optional
 from uuid import UUID, uuid4
-
-
 import sqlmodel
 
 
@@ -21,7 +19,7 @@ class Jobs(sqlmodel.SQLModel, table=True):
 
     id: UUID = sqlmodel.Field(primary_key=True, default_factory=uuid4)
     client_ip: str
-    userid: UUID = sqlmodel.Field(foreign_key="users.userid")
+    userid: UUID = sqlmodel.Field(foreign_key="users.userid", index=True)
     status: str
     created: datetime = sqlmodel.Field(datetime.utcnow())
     updated: Optional[datetime] = None
@@ -30,3 +28,20 @@ class Jobs(sqlmodel.SQLModel, table=True):
     request_type: str
     runtime: Optional[float] = None
     job_metadata: Optional[str] = None
+
+    @classmethod
+    def from_backgroundjob(cls, backgroundjob: "BackgroundJob") -> "Jobs":  # type: ignore # noqa: F821
+        """create a job from a backgroundjob"""
+        return cls(
+            id=backgroundjob.id,
+            client_ip=backgroundjob.client_ip,
+            userid=backgroundjob.userid,
+            status=backgroundjob.status,
+            created=backgroundjob.created,
+            updated=backgroundjob.updated,
+            prompt=backgroundjob.prompt,
+            response=backgroundjob.response,
+            request_type=backgroundjob.request_type,
+            runtime=backgroundjob.runtime,
+            job_metadata=backgroundjob.job_metadata,
+        )
