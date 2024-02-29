@@ -6,6 +6,7 @@ from pydantic import AfterValidator, BaseModel, ConfigDict
 
 JOB_STATUSES = ["created", "running", "error", "complete", "hidden"]
 REQUEST_TYPES = [
+    "dos",
     "plain",
     "prompt_injection",
     "sensitive_disclosure",
@@ -76,7 +77,6 @@ class JobDetail(Job):
     prompt: str
     response: Optional[str] = None
     runtime: Optional[float] = None
-    # json-serialized metadata
     metadata: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)

@@ -334,6 +334,13 @@ createApp({
                 default:
                     return "text-muted";
             }
+        },
+        parseMetadata: function (input) {
+            if (typeof input === "undefined") {
+                return {}
+            } else {
+                return JSON.parse(input);
+            }
         }
     },
     watch: {

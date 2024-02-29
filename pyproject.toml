@@ -39,6 +39,10 @@ mkdocs-material = "^9.5.9"
 markdown-mdantic = "^2.1.0"
 types-requests = "^2.31.0.20240125"
 
+
+[tool.poetry.group.llama.dependencies]
+llama-cpp-python = {extras = ["server"], version = "^0.2.53"}
+
 [tool.poetry.scripts]
 chat-ui = "chat_ui.__main__:main"
 

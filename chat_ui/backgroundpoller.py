@@ -5,13 +5,16 @@ from datetime import datetime
 import json
 import threading
 import time
+from typing import List, Optional, Union
+from uuid import UUID, uuid4
 
 from loguru import logger
+from pydantic import BaseModel, Field
 
-from sqlmodel import Session, select
+from sqlmodel import Session, or_, select
 
+from sqlalchemy import Engine
 from sqlalchemy.exc import NoResultFound
-from sqlalchemy.engine import Engine
 from chat_ui.config import Config
 from chat_ui.db import Jobs
 from chat_ui.utils import get_backend_client
@@ -19,7 +22,76 @@ from chat_ui.utils import get_backend_client
 
 from openai.types.chat import (
     ChatCompletionUserMessageParam,
+    ChatCompletionAssistantMessageParam,
 )
+
+
+class BackgroundJob(BaseModel):
+    id: UUID = Field(primary_key=True, default_factory=uuid4)
+    client_ip: str
+    userid: UUID
+    status: str
+    created: datetime = Field(datetime.utcnow())
+    updated: Optional[datetime] = None
+    prompt: str
+    response: Optional[str] = None
+    request_type: str
+    runtime: Optional[float] = None
+    job_metadata: Optional[str] = None
+    history: List[Jobs] = []
+
+    @classmethod
+    def from_jobs(cls, job: Jobs) -> "BackgroundJob":
+        return cls(
+            id=job.id,
+            client_ip=job.client_ip,
+            userid=job.userid,
+            status=job.status,
+            created=job.created,
+            updated=job.updated,
+            prompt=job.prompt,
+            response=job.response,
+            request_type=job.request_type,
+            runtime=job.runtime,
+            job_metadata=job.job_metadata,
+        )
+
+    def get_history(
+        self,
+    ) -> List[
+        Union[
+            # ChatCompletionSystemMessageParam,
+            ChatCompletionUserMessageParam,
+            ChatCompletionAssistantMessageParam,
+            # ChatCompletionToolMessageParam,
+            # ChatCompletionFunctionMessageParam,
+        ]
+    ]:
+
+        history: List[
+            Union[
+                # ChatCompletionSystemMessageParam,
+                ChatCompletionUserMessageParam,
+                ChatCompletionAssistantMessageParam,
+                # ChatCompletionToolMessageParam,
+                # ChatCompletionFunctionMessageParam,
+            ]
+        ] = []
+
+        for job in self.history:
+            logger.debug("adding user prompt to history: {}", job.prompt)
+            history.append(
+                ChatCompletionUserMessageParam(content=job.prompt, role="user")
+            )
+            if job.response is not None and job.response.strip():
+                logger.debug("adding response to history: {}", job.prompt)
+                history.append(
+                    ChatCompletionAssistantMessageParam(
+                        content=job.response, role="assistant"
+                    )
+                )
+        history.append(ChatCompletionUserMessageParam(content=self.prompt, role="user"))
+        return history
 
 
 class BackgroundPoller(threading.Thread):
@@ -30,21 +102,21 @@ class BackgroundPoller(threading.Thread):
         self.engine = engine
         self.event_loop = asyncio.new_event_loop()
 
-    async def handle_job(self, job: Jobs) -> Jobs:
-        history = (
-            # ChatCompletionSystemMessageParam(
-            #     role="system", content=self.config.backend_system_prompt
-            # ),
-            ChatCompletionUserMessageParam(role="user", content=job.prompt),
-        )
+    async def handle_job(self, job: BackgroundJob) -> Jobs:
+
         start_time = datetime.utcnow().timestamp()
         completion = await get_backend_client().chat.completions.create(
             model="gpt-3.5-turbo",  # this field is currently unused
-            messages=history,
+            messages=job.get_history(),
             temperature=0.7,
             stream=False,
         )
-        logger.debug("completion result", **completion.model_dump())
+        logger.debug(
+            "completion result",
+            userid=job.userid,
+            job_id=job.id,
+            **completion.model_dump(),
+        )
         response = completion.choices[0].message.content
         if completion.usage is not None:
             usage = completion.usage.model_dump()
@@ -61,7 +133,7 @@ class BackgroundPoller(threading.Thread):
             default=str,
         )
         job.status = "complete"
-        return job
+        return Jobs.from_backgroundjob(job)
 
     def run(self) -> None:
         while self.message == "run":
@@ -78,10 +150,37 @@ class BackgroundPoller(threading.Thread):
                     session.add(job)
                     session.commit()
                     session.refresh(job)
+
+                    backgroundjob = BackgroundJob.from_jobs(job)
+                    query = select(Jobs).where(
+                        Jobs.userid == backgroundjob.userid,
+                        Jobs.status == "complete",
+                    )
                     try:
-                        logger.debug("starting job", **job.model_dump())
-                        job = self.event_loop.run_until_complete(self.handle_job(job))
+                        backgroundjob.history = [
+                            job for job in session.exec(query).all()
+                        ]
+                    except Exception as error:
+                        logger.error(
+                            "failed to pull history",
+                            error=error,
+                            userid=job.userid,
+                            job_id=job.id,
+                        )
+                    # TODO: sort the history by "created" field
+
+                    try:
+                        logger.info("starting job", **backgroundjob.model_dump())
+                        background_job_result = self.event_loop.run_until_complete(
+                            self.handle_job(backgroundjob)
+                        )
                         job.updated = datetime.utcnow()
+                        background_job_result.model_dump(
+                            exclude_unset=False, exclude_none=False
+                        )
+                        for key in background_job_result.model_fields.keys():
+                            if key in job.model_fields:
+                                setattr(job, key, getattr(background_job_result, key))
                         session.add(job)
                         session.commit()
                         session.refresh(job)
