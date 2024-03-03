@@ -1,4 +1,5 @@
-const { createApp, ref } = Vue
+/* eslint-disable-next-line no-undef */
+const { createApp } = Vue
 const jobPollIntervalMs = 2500;
 const defaultNextRunMs = 250;
 
@@ -338,13 +339,29 @@ createApp({
         parseMetadata: function (input) {
             if (typeof input === "undefined") {
                 return {}
-            } else {
-                return JSON.parse(input);
             }
-        }
+            return JSON.parse(input);
+        },
+        getUsage: function (job) {
+            const metadata = this.parseMetadata(job.metadata);
+            if (metadata === null || metadata == {}) {
+                return null;
+            }
+            if (typeof metadata === "undefined") {
+                console.error("Failed to parse metadata!", job.metadata)
+                return null;
+            }
+            if (Object.hasOwn(metadata, "usage")) {
+                return Object.entries(metadata.usage).map(([key, value]) => {
+                    key = key.replace("_", " ");
+                    return `${key}: ${value}`;
+                });
+            }
+            return null;
+        },
     },
     watch: {
-        name: function (newName, oldName) {
+        name: function (newName) {
             if (newName) {
                 this.saveUserDetails();
             }
