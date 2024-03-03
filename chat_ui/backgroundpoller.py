@@ -11,7 +11,7 @@ from uuid import UUID, uuid4
 from loguru import logger
 from pydantic import BaseModel, Field
 
-from sqlmodel import Session, or_, select
+from sqlmodel import Session, select
 
 from sqlalchemy import Engine
 from sqlalchemy.exc import NoResultFound
@@ -27,7 +27,7 @@ from openai.types.chat import (
 
 
 class BackgroundJob(BaseModel):
-    id: UUID = Field(primary_key=True, default_factory=uuid4)
+    id: UUID = Field(default_factory=uuid4)
     client_ip: str
     userid: UUID
     status: str
@@ -111,20 +111,20 @@ class BackgroundPoller(threading.Thread):
             temperature=0.7,
             stream=False,
         )
+
         logger.debug(
-            "completion result",
+            "completion output",
             userid=job.userid,
             job_id=job.id,
             **completion.model_dump(),
         )
-        response = completion.choices[0].message.content
         if completion.usage is not None:
             usage = completion.usage.model_dump()
         else:
             usage = None
         job.runtime = datetime.utcnow().timestamp() - start_time
 
-        job.response = response
+        job.response = completion.choices[0].message.content
         job.job_metadata = json.dumps(
             {
                 "model": completion.model,
@@ -133,7 +133,9 @@ class BackgroundPoller(threading.Thread):
             default=str,
         )
         job.status = "complete"
-        return Jobs.from_backgroundjob(job)
+        res = Jobs.from_backgroundjob(job)
+        logger.info("job completed", **res.model_dump())
+        return res
 
     def run(self) -> None:
         while self.message == "run":

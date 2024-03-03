@@ -9,3 +9,4 @@ dist/
 build/
 history.json
 .envrc
+node_modules/

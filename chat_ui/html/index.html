@@ -221,7 +221,7 @@
                             style="cursor: pointer; width: 20px; height: 20px;" />
                         </div>
                         <span v-if="job.prompt">
-                          {{job.prompt}}
+                          You: {{job.prompt}}
                         </span>
                       </div>
                       <ul class="list-group list-group-flush">
@@ -247,7 +247,14 @@
                             :class="colorFromStatus(job.status) ">Status:
                             {{ job.status }}
                           </h6>
-                          <div>{{parseMetadata(job.metadata).usage}}</div>
+                          <div>
+                            <ul
+                              style="list-style-type: none; padding-left: 0px;">
+                              <li v-for="meta in getUsage(job)" :key="meta">
+                                {{meta}}
+                              </li>
+                            </ul>
+                          </div>
                           <div
                             id="resubmit_job_{{job.id}}"
                             @click="resubmitJob(job.id)"
