@@ -1,9 +1,6 @@
 """ cli runner for chat-ui """
 
-import logging
 import click
-
-from chat_ui import logs
 
 
 @click.command()
