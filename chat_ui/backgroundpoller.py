@@ -121,9 +121,9 @@ class BackgroundPoller(threading.Thread):
         if completion.usage is not None:
             usage = completion.usage.model_dump()
         else:
-            usage = None
-        job.runtime = datetime.utcnow().timestamp() - start_time
+            usage = {}
 
+        job.runtime = datetime.utcnow().timestamp() - start_time
         job.response = completion.choices[0].message.content
         job.job_metadata = json.dumps(
             {
@@ -132,10 +132,18 @@ class BackgroundPoller(threading.Thread):
             },
             default=str,
         )
+
+        # so it's slightly easier to parse in the logs
+        logger.info(
+            "job metadata",
+            job_id=job.id,
+            userid=job.userid,
+            **usage,
+        )
+
         job.status = "complete"
-        res = Jobs.from_backgroundjob(job)
-        logger.info("job completed", **res.model_dump())
-        return res
+        logger.info("job completed", **job.model_dump())
+        return Jobs.from_backgroundjob(job)
 
     def run(self) -> None:
         while self.message == "run":

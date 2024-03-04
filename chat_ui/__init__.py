@@ -168,7 +168,6 @@ async def create_job(
     request: Request,
     session: Session = Depends(get_session),
 ) -> Job:
-    logger.info("New job", src_ip=get_client_ip(request), **job.model_dump())
 
     client_ip = get_client_ip(request)
 
@@ -179,6 +178,8 @@ async def create_job(
         request_type=job.request_type,
         client_ip=client_ip,
     )
+
+    logger.info("new job", src_ip=get_client_ip(request), **newjob.model_dump())
     session.add(newjob)
     session.commit()
     session.refresh(newjob)

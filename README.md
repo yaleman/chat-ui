@@ -14,3 +14,13 @@ See the chatui.config.Config class for options, you can also set config options 
 2. server takes the job and works on it in the background
 3. user polls periodically for the response
 4. winning
+
+## Data outputs
+
+The quoted terms/phrases should be in the "message" field of the log emitted when the action happens:
+
+- when a job is submitted - "new job"
+- when a job starts being processed - "starting job"
+- when a job is completed, multiple:
+  - "job completed" - completion data (`Jobs`)
+  - "job metadata" - metadata - includes token use
