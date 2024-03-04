@@ -228,7 +228,8 @@
                         <li class="list-group-item py-3"
                           v-if="job.response">
                           <h5>Response</h5>
-                          {{job.response}}
+                          <div v-html="job.response"></div>
+
                         </li>
                         <li class="list-group-item">
                           <span class="text-muted" v-if="job.updated">
