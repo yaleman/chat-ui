@@ -46,7 +46,7 @@ from chat_ui.models import (
     WebSocketResponse,
     validate_uuid,
 )
-from chat_ui.utils import get_client_ip, get_waiting_jobs
+from chat_ui.utils import get_client_ip, get_waiting_jobs, html_from_response
 
 logger.remove()
 logger.add(sink=sink)
@@ -206,6 +206,8 @@ async def job_detail(
     try:
         query = select(Jobs).where(Jobs.userid == userid, Jobs.id == job_id)
         job = session.exec(query).first()
+        # convert the output into HTML
+        job.response = html_from_response(job.response)
         return JobDetail.from_jobs(job)
     except NoResultFound:
         raise HTTPException(status_code=404, detail="Item not found")

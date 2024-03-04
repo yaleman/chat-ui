@@ -6,6 +6,8 @@ from fastapi import Request, WebSocket
 from loguru import logger
 from openai import AsyncOpenAI
 from sqlmodel import Session, or_
+import cmarkgfm
+import cmarkgfm.cmark
 
 from chat_ui.config import Config
 from chat_ui.db import Jobs
@@ -41,3 +43,11 @@ def get_waiting_jobs(session: Session) -> Tuple[datetime, int]:
     except Exception as error:
         logger.error("Failed to get waiting count", error=error)
         return (datetime.utcnow(), 0)
+
+
+def html_from_response(input: str) -> str:
+    """turn a markdown/HTML response into a HTML string"""
+
+    # documentation here: <https://github.com/theacodes/cmarkgfm?tab=readme-ov-file#advanced-usage>
+    options = cmarkgfm.cmark.Options.CMARK_OPT_VALIDATE_UTF8
+    return cmarkgfm.github_flavored_markdown_to_html(input, options=options)
