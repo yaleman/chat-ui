@@ -5,7 +5,7 @@ from datetime import datetime
 import json
 import threading
 import time
-from typing import List, Optional, Union
+from typing import List, Optional, Tuple, Union
 from uuid import UUID, uuid4
 
 from loguru import logger
@@ -79,12 +79,11 @@ class BackgroundJob(BaseModel):
         ] = []
 
         for job in self.history:
-            logger.debug("adding user prompt to history: {}", job.prompt)
+            # logger.debug("adding user prompt to history: {}", job.prompt)
             history.append(
                 ChatCompletionUserMessageParam(content=job.prompt, role="user")
             )
             if job.response is not None and job.response.strip():
-                logger.debug("adding response to history: {}", job.prompt)
                 history.append(
                     ChatCompletionAssistantMessageParam(
                         content=job.response, role="assistant"
@@ -92,6 +91,36 @@ class BackgroundJob(BaseModel):
                 )
         history.append(ChatCompletionUserMessageParam(content=self.prompt, role="user"))
         return history
+
+
+def rough_history_tokens(
+    history: List[Jobs],
+) -> List[Tuple[str, int]]:
+    """roughly calculate the token count based on the history, takes the number of words in the prompt and response and multiplies by 4 to get a rough token count."""
+    tokens = []
+    for job in history:
+        this_words = len(job.prompt.split())
+        if job.response is not None:
+            this_words += len(job.response.split())
+        tokens += [
+            (
+                str(job.id),
+                this_words * 4,
+            )
+        ]
+    return tokens
+
+
+def sort_by_updated_or_created(objects: List[Jobs]) -> List[Jobs]:
+    """sort a list of jobs by the updated or created field, if updated is not set, use created."""
+
+    def get_sort_key(self: Jobs) -> datetime:
+        """returns the sorting key for the object"""
+        if self.updated is not None:
+            return self.updated
+        return self.created
+
+    return sorted(objects, key=get_sort_key)
 
 
 class BackgroundPoller(threading.Thread):
@@ -105,9 +134,35 @@ class BackgroundPoller(threading.Thread):
     async def handle_job(self, job: BackgroundJob) -> Jobs:
 
         start_time = datetime.utcnow().timestamp()
-        completion = await get_backend_client().chat.completions.create(
+        client = get_backend_client()
+        # we need to make sure we're under the token limit
+
+        history_tokens = rough_history_tokens(job.history)
+        total_history_tokens = sum([t[1] for t in history_tokens])
+        while total_history_tokens > 2048:
+            logger.debug(
+                "popping history",
+                history_tokens=history_tokens,
+                history_length=len(job.history),
+            )
+            job.history.pop(0)
+            history_tokens = rough_history_tokens(job.history)
+            total_history_tokens = sum([t[1] for t in history_tokens])
+        history = job.get_history()
+
+        logger.debug(
+            "job history",
+            userid=job.userid,
+            id=job.id,
+            history=history,
+            history_length=len([]),
+            history_tokens=history_tokens,
+            total_history_tokens=total_history_tokens,
+        )
+
+        completion = await client.chat.completions.create(
             model="gpt-3.5-turbo",  # this field is currently unused
-            messages=job.get_history(),
+            messages=history,
             temperature=0.7,
             stream=False,
         )
@@ -167,20 +222,30 @@ class BackgroundPoller(threading.Thread):
                         Jobs.status == "complete",
                     )
                     try:
+                        # TODO: sort the history by "created" field
+
                         backgroundjob.history = [
                             job for job in session.exec(query).all()
                         ]
+
                     except Exception as error:
                         logger.error(
                             "failed to pull history",
                             error=error,
                             userid=job.userid,
-                            job_id=job.id,
+                            id=job.id,
                         )
-                    # TODO: sort the history by "created" field
 
                     try:
-                        logger.info("starting job", **backgroundjob.model_dump())
+                        start_log_entry = {**backgroundjob.model_dump()}
+                        history = start_log_entry.pop(
+                            "history"
+                        )  # need to strip this off because it's just huge
+                        logger.debug(
+                            "job history", id=job.id, userid=job.userid, history=history
+                        )
+
+                        logger.info("starting job", **start_log_entry)
                         background_job_result = self.event_loop.run_until_complete(
                             self.handle_job(backgroundjob)
                         )
@@ -213,6 +278,12 @@ class BackgroundPoller(threading.Thread):
 
                             else:
                                 job.response = str(error)
+                                logger.error(
+                                    "error processing job",
+                                    error=job.response,
+                                    **job.model_dump(),
+                                )
+
                             job.updated = datetime.utcnow()
                             session.add(job)
                             session.commit()
