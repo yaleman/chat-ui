@@ -197,7 +197,7 @@ class BackgroundPoller(threading.Thread):
         )
 
         job.status = "complete"
-        logger.info("job completed", **job.model_dump())
+        logger.info("job completed", **job.model_dump(exclude=["history"]))
         return Jobs.from_backgroundjob(job)
 
     def run(self) -> None:
