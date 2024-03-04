@@ -207,7 +207,10 @@ async def job_detail(
         query = select(Jobs).where(Jobs.userid == userid, Jobs.id == job_id)
         job = session.exec(query).first()
         # convert the output into HTML
-        job.response = html_from_response(job.response)
+        # technically this'll be caught as an exception, but it doesn't hurt to be explicit
+        if job is not None:
+            if job.response is not None:
+                job.response = html_from_response(job.response)
         return JobDetail.from_jobs(job)
     except NoResultFound:
         raise HTTPException(status_code=404, detail="Item not found")

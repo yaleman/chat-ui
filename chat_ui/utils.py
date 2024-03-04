@@ -6,8 +6,8 @@ from fastapi import Request, WebSocket
 from loguru import logger
 from openai import AsyncOpenAI
 from sqlmodel import Session, or_
-import cmarkgfm
-import cmarkgfm.cmark
+import cmarkgfm  # type: ignore
+import cmarkgfm.cmark  # type: ignore
 
 from chat_ui.config import Config
 from chat_ui.db import Jobs
@@ -49,5 +49,14 @@ def html_from_response(input: str) -> str:
     """turn a markdown/HTML response into a HTML string"""
 
     # documentation here: <https://github.com/theacodes/cmarkgfm?tab=readme-ov-file#advanced-usage>
-    options = cmarkgfm.cmark.Options.CMARK_OPT_VALIDATE_UTF8
-    return cmarkgfm.github_flavored_markdown_to_html(input, options=options)
+    if input is None:
+        return ""
+    try:
+        options = cmarkgfm.cmark.Options.CMARK_OPT_VALIDATE_UTF8
+        res: str = cmarkgfm.github_flavored_markdown_to_html(input, options=options)
+        return res
+    except Exception as error:
+        logger.error(
+            "Failed to convert markdown to HTML, returning raw input", error=error
+        )
+        return input

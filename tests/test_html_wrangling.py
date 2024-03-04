@@ -1,5 +1,5 @@
-import cmarkgfm
-from cmarkgfm.cmark import Options as cmarkgfmOptions
+import cmarkgfm  # type: ignore
+from cmarkgfm.cmark import Options as cmarkgfmOptions  # type: ignore
 
 
 def test_html_wrangling() -> None:
