@@ -39,10 +39,13 @@ from chat_ui.logs import sink
 from chat_ui.models import (
     Job,
     JobDetail,
+    JobStatus,
+    LogMessages,
     NewJob,
     UserDetail,
     UserForm,
     WebSocketMessage,
+    WebSocketMessageType,
     WebSocketResponse,
     validate_uuid,
 )
@@ -74,11 +77,13 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[Any, Any]:
 
         with Session(engine) as session:
             sqlmodel.SQLModel.metadata.create_all(engine)
-            jobs = session.exec(select(Jobs).where(Jobs.status == "running")).all()
+            jobs = session.exec(
+                select(Jobs).where(Jobs.status == JobStatus.Running.value)
+            ).all()
             for job in jobs:
                 logger.warning("Job was running, setting to error", job_id=job.id)
 
-                job.status = "error"
+                job.status = JobStatus.Error.value
                 job.response = "Server restarted, please try this again"
                 job.updated = datetime.utcnow()
                 session.add(job)
@@ -134,6 +139,7 @@ async def js(filename: str) -> FileResponse:
 
 @app.post("/user")
 async def post_user(
+    request: Request,
     form: UserForm,
     session: Session = Depends(get_session),
 ) -> UserDetail:
@@ -154,12 +160,16 @@ async def post_user(
         session.add(newuser)
         session.commit()
         session.refresh(newuser)
-    return UserDetail(
+    res = UserDetail(
         userid=str(newuser.userid),
         name=newuser.name,
         created=newuser.created,
         updated=newuser.updated,
     )
+    logger.info(
+        LogMessages.UserUpdate, src_ip=get_client_ip(request), **res.model_dump()
+    )
+    return res
 
 
 @app.post("/job")
@@ -172,14 +182,16 @@ async def create_job(
     client_ip = get_client_ip(request)
 
     newjob = Jobs(
-        status="created",
+        status=JobStatus.Created.value,
         userid=job.userid,
         prompt=job.prompt,
         request_type=job.request_type,
         client_ip=client_ip,
     )
 
-    logger.info("new job", src_ip=get_client_ip(request), **newjob.model_dump())
+    logger.info(
+        LogMessages.NewJob, src_ip=get_client_ip(request), **newjob.model_dump()
+    )
     session.add(newjob)
     session.commit()
     session.refresh(newjob)
@@ -222,10 +234,14 @@ async def websocket_jobs(
     # serialize the jobs out so the websocket reader can parse them
     try:
         jobs = session.exec(
-            select(Jobs).where(Jobs.userid == data.userid, Jobs.status != "hidden")
+            select(Jobs).where(
+                Jobs.userid == data.userid, Jobs.status != JobStatus.Hidden.value
+            )
         ).all()
         payload = [Job.from_jobs(job) for job in jobs]
-        response = WebSocketResponse(message="jobs", payload=payload)
+        response = WebSocketResponse(
+            message=WebSocketMessageType.Jobs.value, payload=payload
+        )
     except Exception as error:
         logger.error(
             "websocket_jobs error",
@@ -233,7 +249,9 @@ async def websocket_jobs(
             src_ip=get_client_ip(websocket),
             **data.model_dump(),
         )
-        response = WebSocketResponse(message="error", payload="Failed to get job list!")
+        response = WebSocketResponse(
+            message=WebSocketMessageType.Error.value, payload="Failed to get job list!"
+        )
     return response
 
 
@@ -247,47 +265,50 @@ async def websocket_resubmit(
         query = select(Jobs).where(Jobs.id == data.payload, Jobs.userid == data.userid)
         res = session.exec(query).one()
         # only accept the resubmit if it was an error
-        if res.status == "error":
-            res.status = "created"
+        if res.status == JobStatus.Error.value:
+            res.status = JobStatus.Created.value
             res.response = ""
             res.updated = datetime.utcnow()
             session.add(res)
             session.commit()
             session.refresh(res)
             logger.debug(
-                "resubmitted", src_ip=get_client_ip(websocket), **data.model_dump()
+                LogMessages.Resubmitted,
+                src_ip=get_client_ip(websocket),
+                **data.model_dump(),
             )
             response = WebSocketResponse(
-                message="resubmit", payload=res.model_dump_json()
+                message=WebSocketMessageType.Resubmit.value,
+                payload=res.model_dump_json(),
             )
         else:
             logger.debug(
-                "rejected resubmit due to job status",
+                LogMessages.RejectedResubmit,
                 status=res.status,
                 src_ip=get_client_ip(websocket),
                 **data.model_dump(),
             )
             response = WebSocketResponse(
-                message="error",
+                message=WebSocketMessageType.Error.value,
                 payload=f"Job {data.payload} is not in an error state",
             )
     except NoResultFound:
         logger.debug(
-            "No jobs found", src_ip=get_client_ip(websocket), **data.model_dump()
+            LogMessages.NoJobs, src_ip=get_client_ip(websocket), **data.model_dump()
         )
         response = WebSocketResponse(
-            message="error",
+            message=WebSocketMessageType.Error.value,
             payload=f"No job ID found matching {data.payload}",
         )
     except Exception as error:
         logger.error(
-            "Failed to handle resubmit request",
+            LogMessages.FailedResubmit,
             error=error,
             src_ip=get_client_ip(websocket),
             **data.model_dump(),
         )
         response = WebSocketResponse(
-            message="error",
+            message=WebSocketMessageType.Error.value,
             payload=f"Error handling {data.payload}",
         )
     return response
@@ -307,18 +328,20 @@ async def websocket_waiting(
             (last_update, waiting) = get_waiting_jobs(session)
 
         response = WebSocketResponse(
-            message="waiting", payload=json.dumps(waiting, default=str)
+            message=WebSocketMessageType.Waiting.value,
+            payload=json.dumps(waiting, default=str),
         )
 
     except Exception as error:
         logger.error(
-            "websocket error",
+            LogMessages.WebsocketError,
             error=error,
             src_ip=get_client_ip(websocket),
             **data.model_dump(),
         )
         response = WebSocketResponse(
-            message="error", payload="Failed to get count of pending jobs..."
+            message=WebSocketMessageType.Error.value,
+            payload="Failed to get count of pending jobs...",
         )
     return response
 
@@ -331,33 +354,33 @@ async def websocket_delete(
         try:
             query = select(Jobs).where(Jobs.id == job_id, Jobs.userid == data.userid)
             res = session.exec(query).one()
-            res.status = "hidden"
+            res.status = JobStatus.Hidden.value
             res.updated = datetime.utcnow()
             session.add(res)
             session.commit()
             session.refresh(res)
             logger.info(
-                "Job deleted",
+                LogMessages.JobDeleted,
                 src_ip=get_client_ip(websocket),
                 **data.model_dump(),
             )
             response = WebSocketResponse(
-                message="delete", payload=res.model_dump_json()
+                message=WebSocketMessageType.Delete.value, payload=res.model_dump_json()
             )
         except NoResultFound:
             logger.info(
-                "Delete request but no job found",
+                LogMessages.DeleteNotFound,
                 job_id=job_id,
                 src_ip=get_client_ip(websocket),
                 **data.model_dump(),
             )
             response = WebSocketResponse(
-                message="error",
+                message=WebSocketMessageType.Error.value,
                 payload=f"No job ID found matching {job_id}",
             )
     else:
         response = WebSocketResponse(
-            message="error",
+            message=WebSocketMessageType.Error.value,
             payload="No ID specified when asking for delete!",
         )
     return response
@@ -375,7 +398,9 @@ async def websocket_endpoint(
     logger.debug("New websocket connection", src_ip=get_client_ip(websocket))
     try:
         while True:
-            response = WebSocketResponse(message="error", payload="unknown message")
+            response = WebSocketResponse(
+                message=WebSocketMessageType.Error.value, payload="unknown message"
+            )
             try:
                 raw_msg = await websocket.receive_text()
                 data = WebSocketMessage.model_validate_json(raw_msg)
@@ -389,12 +414,14 @@ async def websocket_endpoint(
                     response = await websocket_waiting(data, session, websocket)
             except Exception as error:
                 logger.error(
-                    "websocket error",
+                    LogMessages.WebsocketError,
                     error=error,
                     src_ip=get_client_ip(websocket),
                     raw_msg=raw_msg,
                 )
-                response = WebSocketResponse(message="error", payload=str(error))
+                response = WebSocketResponse(
+                    message=WebSocketMessageType.Error.value, payload=str(error)
+                )
             await websocket.send_text(response.as_message())
     except WebSocketDisconnect as disconn:
         logger.debug(
@@ -412,11 +439,11 @@ async def websocket_endpoint(
             )
         else:
             logger.error(
-                "websocket error", src_ip=get_client_ip(websocket), error=error
+                LogMessages.WebsocketError, src_ip=get_client_ip(websocket), error=error
             )
     except Exception as error:
         logger.error(
-            "websocket exception", src_ip=get_client_ip(websocket), error=error
+            LogMessages.WebsocketError, src_ip=get_client_ip(websocket), error=error
         )
 
 
