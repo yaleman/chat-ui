@@ -17,6 +17,7 @@ from sqlalchemy import Engine
 from sqlalchemy.exc import NoResultFound
 from chat_ui.config import Config
 from chat_ui.db import Jobs
+from chat_ui.models import JobStatus, LogMessages
 from chat_ui.utils import get_backend_client
 
 
@@ -79,7 +80,6 @@ class BackgroundJob(BaseModel):
         ] = []
 
         for job in self.history:
-            # logger.debug("adding user prompt to history: {}", job.prompt)
             history.append(
                 ChatCompletionUserMessageParam(content=job.prompt, role="user")
             )
@@ -151,7 +151,7 @@ class BackgroundPoller(threading.Thread):
         history = job.get_history()
 
         logger.debug(
-            "job history",
+            LogMessages.JobHistory,
             userid=job.userid,
             id=job.id,
             history=history,
@@ -168,7 +168,7 @@ class BackgroundPoller(threading.Thread):
         )
 
         logger.debug(
-            "completion output",
+            LogMessages.CompletionOutput,
             userid=job.userid,
             job_id=job.id,
             **completion.model_dump(),
@@ -190,14 +190,14 @@ class BackgroundPoller(threading.Thread):
 
         # so it's slightly easier to parse in the logs
         logger.info(
-            "job metadata",
+            LogMessages.JobMetadata,
             job_id=job.id,
             userid=job.userid,
             **usage,
         )
 
-        job.status = "complete"
-        logger.info("job completed", **job.model_dump(exclude=["history"]))
+        job.status = JobStatus.Complete.value
+        logger.info(LogMessages.JobCompleted, **job.model_dump(exclude={"history"}))
         return Jobs.from_backgroundjob(job)
 
     def run(self) -> None:
@@ -205,12 +205,12 @@ class BackgroundPoller(threading.Thread):
             with Session(self.engine) as session:
                 try:
                     job = session.exec(
-                        select(Jobs).where(Jobs.status == "created")
+                        select(Jobs).where(Jobs.status == JobStatus.Created.value)
                     ).first()
                     if job is None:
                         time.sleep(0.1)
                         continue
-                    job.status = "running"
+                    job.status = JobStatus.Running.value
                     job.updated = datetime.utcnow()
                     session.add(job)
                     session.commit()
@@ -219,7 +219,7 @@ class BackgroundPoller(threading.Thread):
                     backgroundjob = BackgroundJob.from_jobs(job)
                     query = select(Jobs).where(
                         Jobs.userid == backgroundjob.userid,
-                        Jobs.status == "complete",
+                        Jobs.status == JobStatus.Complete.value,
                     )
                     try:
                         # TODO: sort the history by "created" field
@@ -245,7 +245,7 @@ class BackgroundPoller(threading.Thread):
                             "job history", id=job.id, userid=job.userid, history=history
                         )
 
-                        logger.info("starting job", **start_log_entry)
+                        logger.info(LogMessages.JobStarted, **start_log_entry)
                         background_job_result = self.event_loop.run_until_complete(
                             self.handle_job(backgroundjob)
                         )
@@ -266,7 +266,7 @@ class BackgroundPoller(threading.Thread):
                             job = session.exec(
                                 select(Jobs).where(Jobs.id == job.id)
                             ).one()
-                            job.status = "error"
+                            job.status = JobStatus.Error.value
                             if "Connection error" in str(error):
                                 logger.error(
                                     "Failed to connect to backend!",
@@ -290,6 +290,6 @@ class BackgroundPoller(threading.Thread):
                             session.refresh(job)
 
                 except NoResultFound:
-                    logger.debug("No waiting jobs found")
+                    logger.debug(LogMessages.NoJobs)
                     time.sleep(1)
-        logger.info("Background poller is stopping")
+        logger.info(LogMessages.BackgroundPollerShutdown)

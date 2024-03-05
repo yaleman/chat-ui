@@ -11,6 +11,7 @@ import cmarkgfm.cmark  # type: ignore
 
 from chat_ui.config import Config
 from chat_ui.db import Jobs
+from chat_ui.models import JobStatus, LogMessages
 
 
 def get_client_ip(request: Union[Request, WebSocket]) -> str:
@@ -35,10 +36,15 @@ def get_waiting_jobs(session: Session) -> Tuple[datetime, int]:
     try:
         res = (
             session.query(Jobs)
-            .where(or_(Jobs.status == "created", Jobs.status == "running"))
+            .where(
+                or_(
+                    Jobs.status == JobStatus.Created.value,
+                    Jobs.status == JobStatus.Running.value,
+                )
+            )
             .count()
         )
-        logger.info("pending jobs", pending_jobs=res)
+        logger.info(LogMessages.PendingJobs, pending_jobs=res)
         return (datetime.utcnow(), res)
     except Exception as error:
         logger.error("Failed to get waiting count", error=error)

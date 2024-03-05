@@ -4,6 +4,8 @@ from typing import Optional
 from uuid import UUID, uuid4
 import sqlmodel
 
+from chat_ui.models import JobStatus
+
 
 class Users(sqlmodel.SQLModel, table=True):
     """database representation of a user"""
@@ -20,7 +22,7 @@ class Jobs(sqlmodel.SQLModel, table=True):
     id: UUID = sqlmodel.Field(primary_key=True, default_factory=uuid4)
     client_ip: str
     userid: UUID = sqlmodel.Field(foreign_key="users.userid", index=True)
-    status: str
+    status: str = sqlmodel.Field(JobStatus.Created.value)
     created: datetime = sqlmodel.Field(datetime.utcnow())
     updated: Optional[datetime] = None
     prompt: str

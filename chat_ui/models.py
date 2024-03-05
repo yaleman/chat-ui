@@ -1,17 +1,26 @@
 from datetime import datetime
+from enum import StrEnum
 import json
 from typing import Annotated, Any, List, Optional, Union
 from uuid import UUID
+
 from pydantic import AfterValidator, BaseModel, ConfigDict
 
-JOB_STATUSES = ["created", "running", "error", "complete", "hidden"]
-REQUEST_TYPES = [
-    "dos",
-    "plain",
-    "prompt_injection",
-    "sensitive_disclosure",
-    "insecure_output",
-]
+
+class JobStatus(StrEnum):
+    Created = "created"
+    Running = "running"
+    Error = "error"
+    Complete = "complete"
+    Hidden = "hidden"
+
+
+class RequestType(StrEnum):
+    DOS = "dos"
+    Plain = "plain"
+    PromptInjection = "prompt_injection"
+    SensitiveDisclosure = "sensitive_disclosure"
+    InsecureOutPut = "insecure_output"
 
 
 def validate_uuid(v: str) -> str:
@@ -38,17 +47,16 @@ def validate_optional_userid(v: str) -> Optional[str]:
 
 def validate_job_status(v: str) -> str:
     """validates that job status values are OK"""
-    assert (
-        v in JOB_STATUSES
-    ), f"Invalid job status {v} - should be one of {', '.join(JOB_STATUSES)}"
+    JobStatus(v)  # this will raise an exception if it's not a valid status
+    # assert (
+    #     v in JOB_STATUSES
+    # ), f"Invalid job status {v} - should be one of {', '.join(JOB_STATUSES)}"
     return v
 
 
 def validate_request_type(v: str) -> str:
     """validates request types"""
-    assert (
-        v in REQUEST_TYPES
-    ), f"Invalid request type {v} - should be one of {', '.join(REQUEST_TYPES)}"
+    RequestType(v)  # this will raise an exception if it's not a valid status
     return v
 
 
@@ -114,14 +122,17 @@ class UserDetail(UserForm):
     updated: Optional[datetime] = None
 
 
-WEBSOCKET_MESSAGES = ["jobs", "delete", "error", "resubmit", "waiting"]
+class WebSocketMessageType(StrEnum):
+    Jobs = "jobs"
+    Delete = "delete"
+    Error = "error"
+    Resubmit = "resubmit"
+    Waiting = "waiting"
 
 
 def validate_websocket_message(v: str) -> str:
     """validates that job status values are OK"""
-    assert (
-        v in WEBSOCKET_MESSAGES
-    ), f"Invalid websocket message {v} - should be one of {', '.join(WEBSOCKET_MESSAGES)}"
+    WebSocketMessageType(v)  # this will raise an exception if it's not a valid status
     return v
 
 
@@ -142,3 +153,22 @@ class WebSocketResponse(BaseModel):
     def as_message(self) -> str:
         """convert to a string"""
         return json.dumps(self.model_dump(), default=str)
+
+
+class LogMessages(StrEnum):
+    UserUpdate = "user update"
+    NewJob = "new job"
+    JobDeleted = "job deleted"
+    DeleteNotFound = "delete but not found"
+    JobMetadata = "job metadata"
+    JobCompleted = "job completed"
+    JobStarted = "starting job"
+    BackgroundPollerShutdown = "Background poller is stopping"
+    PendingJobs = "pending jobs"
+    Resubmitted = "resubmitted"
+    RejectedResubmit = "rejected resubmit due to job status"
+    FailedResubmit = "failed resubmit handling"
+    NoJobs = "no jobs found"
+    WebsocketError = "websocket error"
+    JobHistory = "job history"
+    CompletionOutput = "completion output"
