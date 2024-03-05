@@ -24,3 +24,5 @@ The quoted terms/phrases should be in the "message" field of the log emitted whe
 - when a job is completed, multiple:
   - "job completed" - completion data (`Jobs`)
   - "job metadata" - metadata - includes token use
+
+There's also the `status` field in jobs which is logged, showing where they are in the processing pipeline.
