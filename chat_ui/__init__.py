@@ -418,7 +418,7 @@ async def websocket_feedback(
             session.refresh(feedback)
             logger.info(
                 LogMessages.JobFeedback,
-                **existing_feedback.model_dump(warnings=False, round_trip=True),
+                **feedback.model_dump(warnings=False, round_trip=True),
             )
             response = WebSocketResponse(
                 message=WebSocketMessageType.Feedback.value, payload="OK"
