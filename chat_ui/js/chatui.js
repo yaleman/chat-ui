@@ -312,7 +312,8 @@ createApp({
             });
         },
         sendPromptFeedback: function () {
-            if (this.promptFeedbackResult == 0) {
+            if (this.selectedJob === null) {
+                console.debug("Not sending feedback because selectedJob is null")
                 return
             }
 
