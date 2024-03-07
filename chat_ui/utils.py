@@ -5,7 +5,9 @@ from typing import Tuple, Union
 from fastapi import Request, WebSocket
 from loguru import logger
 from openai import AsyncOpenAI
-from sqlmodel import Session, or_
+from sqlalchemy import func
+from sqlalchemy.exc import NoResultFound
+from sqlmodel import Session, or_, select
 import cmarkgfm  # type: ignore
 import cmarkgfm.cmark  # type: ignore
 
@@ -34,18 +36,22 @@ def get_backend_client() -> AsyncOpenAI:
 @lru_cache(maxsize=2)
 def get_waiting_jobs(session: Session) -> Tuple[datetime, int]:
     try:
-        res = (
-            session.query(Jobs)
-            .where(
-                or_(
-                    Jobs.status == JobStatus.Created.value,
-                    Jobs.status == JobStatus.Running.value,
-                )
+        query = select(func.count(Jobs.id)).where(  # type: ignore
+            or_(
+                Jobs.status == JobStatus.Created.value,
+                Jobs.status == JobStatus.Running.value,
             )
-            .count()
         )
+
+        # logger.debug("get_waiting jobs query: {}", query.params())
+        res = session.scalar(query)
+        if res is None:
+            res = 0
+
         logger.info(LogMessages.PendingJobs, pending_jobs=res)
         return (datetime.utcnow(), res)
+    except NoResultFound:
+        return (datetime.utcnow(), 0)
     except Exception as error:
         logger.error("Failed to get waiting count", error=error)
         return (datetime.utcnow(), 0)

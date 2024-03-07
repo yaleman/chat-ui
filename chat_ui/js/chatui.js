@@ -1,7 +1,7 @@
 /* eslint-disable-next-line no-undef */
 const { createApp } = Vue
 const jobPollIntervalMs = 2500;
-const defaultNextRunMs = 250;
+const defaultNextRunMs = 500;
 
 createApp({
     data() {
@@ -19,6 +19,15 @@ createApp({
             waitingJobs: null,
             waitingPoller: null,
             initialLoad: true,
+            // are we showing the prompt details modal?
+            showPromptDetails: false,
+            showPromptDetailsModal: null,
+            selectedJob: null,
+
+            // internal state buckets for prompt details
+            promptFeedbackComments: "",
+            promptFeedbackResult: 0,
+
         };
 
         let name = localStorage.getItem("name");
@@ -52,7 +61,7 @@ createApp({
     created() {
         this.getNewWebSocket();
         this.poller = setInterval(this.updateJobs, jobPollIntervalMs);
-        this.waitingPoller = setInterval(this.updateWaiting, defaultNextRunMs);
+        this.waitingPoller = setInterval(this.updateWaiting, jobPollIntervalMs);
         setTimeout(this.updateJobs, defaultNextRunMs);
     },
     computed: {
@@ -115,16 +124,18 @@ createApp({
         deleteJob: function (jobid) {
             this.checkForWebSocket();
 
-            const payload = {
-                "message": "delete",
-                "userid": this.userid,
-                "payload": jobid,
-            }
-            if (this.ws.readyState === WebSocket.OPEN) {
-                this.ws.send(JSON.stringify(payload));
-                delete this.jobs[jobid];
-            } else {
-                setTimeout(() => { this.deleteJob(jobid) }, 1000)
+            if (confirm("Please confirm you want to delete this job")) {
+                const payload = {
+                    "message": "delete",
+                    "userid": this.userid,
+                    "payload": jobid,
+                }
+                if (this.ws.readyState === WebSocket.OPEN) {
+                    this.ws.send(JSON.stringify(payload));
+                    delete this.jobs[jobid];
+                } else {
+                    setTimeout(() => { this.deleteJob(jobid) }, 1000)
+                }
             }
         },
         // handle the "jobs" response from the websocket
@@ -192,6 +203,9 @@ createApp({
                     case "waiting":
                         this.waitingJobs = response.payload;
                         break;
+                    case "feedback":
+                        console.debug("Feedback received", response.payload);
+                        break;
                     default:
                         console.error("Unknown message", response.message);
                 }
@@ -222,7 +236,7 @@ createApp({
         updateJobs: function () {
             const payload = { "userid": this.userid, "message": "jobs" };
             this.checkForWebSocket();
-            // it's OK to drop this if we don't have it going already
+            // it's OK to drop this if we don't have it going already, we'll try again soon
             if (this.ws.readyState === WebSocket.OPEN) {
                 this.ws.send(JSON.stringify(payload));
             }
@@ -297,6 +311,30 @@ createApp({
                 console.error(`failed to fetch job data: ${err}`);
             });
         },
+        sendPromptFeedback: function () {
+            if (this.promptFeedbackResult == 0) {
+                return
+            }
+
+            const payload = {
+                "message": "feedback",
+                "userid": this.userid,
+                "payload": JSON.stringify({
+                    "jobid": this.selectedJob,
+                    "comment": this.promptFeedbackComments,
+                    "success": this.promptFeedbackResult
+                })
+            }
+            this.checkForWebSocket();
+            if (this.ws.readyState === WebSocket.OPEN) {
+                this.ws.send(JSON.stringify(payload));
+            } else {
+                // try again in a second, just for kicks
+                setTimeout(() => { this.ws.send(JSON.stringify(payload)) }, 1000);
+            }
+
+            this.jobs[this.selectedJob]["feedback_comment"] = this.promptFeedbackComments;
+        },
         saveUserDetails: function () {
 
             const payload = {
@@ -359,6 +397,37 @@ createApp({
             }
             return null;
         },
+        showPromptDetail: function (jobid) {
+            console.debug(`modal showing job ${jobid}`);
+            this.selectedJob = jobid;
+            this.showPromptDetails = true;
+
+            // the below is used to calm down eslint a little
+            /*global bootstrap*/
+            this.showPromptDetailsModal = new bootstrap.Modal(document.getElementById('showPromptDetails'), {});
+
+            this.showPromptDetailsModal.show();
+            if (this.jobs[jobid].feedback_comment) {
+                this.promptFeedbackComments = this.jobs[jobid].feedback_comment;
+            } else {
+
+                this.promptFeedbackComments = "";
+            }
+
+            if (this.jobs[jobid].feedback_result) {
+                this.promptFeedbackResult = this.jobs[jobid].feedback_result;
+            } else {
+                this.promptFeedbackResult = 0;
+            }
+        },
+        closePromptDetails: function () {
+            this.selectedJob = null;
+            this.showPromptDetails = false;
+            this.showPromptDetailsModal.hide();
+            this.showPromptDetailsModal = null;
+            this.promptFeedbackComments = "";
+            this.promptFeedbackResult = 0;
+        }
     },
     watch: {
         name: function (newName) {
