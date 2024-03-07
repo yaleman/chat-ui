@@ -9,6 +9,8 @@ import random
 import string
 from pathlib import Path
 import sys
+import traceback
+
 
 from typing import Any, AsyncGenerator, Generator, List
 from fastapi import (
@@ -23,6 +25,8 @@ from fastapi import (
 from fastapi.responses import FileResponse, HTMLResponse
 from loguru import logger
 from prometheus_fastapi_instrumentator import Instrumentator
+
+
 from sqlmodel import Session, select
 import sqlmodel
 from sqlalchemy.exc import NoResultFound
@@ -33,7 +37,7 @@ from chat_ui.backgroundpoller import BackgroundPoller
 
 # from chat_ui.backgroundpoller import BackgroundPoller
 from chat_ui.config import Config
-from chat_ui.db import Jobs, Users
+from chat_ui.db import JobFeedback, Jobs, Users
 from chat_ui.logs import sink
 
 from chat_ui.models import (
@@ -64,7 +68,7 @@ engine = sqlmodel.create_engine(sqlite_url, echo=False, connect_args=connect_arg
 async def lifespan(app: FastAPI) -> AsyncGenerator[Any, Any]:
     """runs the background poller as the app is running"""
 
-    instrumentator.expose(app)
+    instrumentator.expose(app, should_gzip=True)
 
     if "pytest" not in sys.modules:
 
@@ -190,12 +194,14 @@ async def create_job(
     )
 
     logger.info(
-        LogMessages.NewJob, src_ip=get_client_ip(request), **newjob.model_dump()
+        LogMessages.NewJob,
+        src_ip=get_client_ip(request),
+        **newjob.model_dump(round_trip=False, warnings=False),
     )
     session.add(newjob)
     session.commit()
     session.refresh(newjob)
-    return Job.from_jobs(newjob)
+    return Job.from_jobs(newjob, None)
 
 
 @app.get("/jobs")
@@ -205,8 +211,7 @@ async def jobs(
 ) -> List[Job]:
     """query the jobs for a given userid"""
     query = select(Jobs).where(Jobs.userid == userid)
-    res = session.exec(query).all()
-    return [Job.from_jobs(job) for job in res]
+    return [Job.from_jobs(job, None) for job in session.exec(query).all()]
 
 
 @app.get("/jobs/{userid}/{job_id}")
@@ -223,7 +228,9 @@ async def job_detail(
         if job is not None:
             if job.response is not None:
                 job.response = html_from_response(job.response)
-        return JobDetail.from_jobs(job)
+        session.reset()
+        feedback = JobFeedback.get_feedback(session, job_id)
+        return JobDetail.from_jobs(job, feedback)
     except NoResultFound:
         raise HTTPException(status_code=404, detail="Item not found")
 
@@ -238,7 +245,7 @@ async def websocket_jobs(
                 Jobs.userid == data.userid, Jobs.status != JobStatus.Hidden.value
             )
         ).all()
-        payload = [Job.from_jobs(job) for job in jobs]
+        payload = [Job.from_jobs(job, None) for job in jobs]
         response = WebSocketResponse(
             message=WebSocketMessageType.Jobs.value, payload=payload
         )
@@ -346,6 +353,85 @@ async def websocket_waiting(
     return response
 
 
+async def websocket_feedback(
+    data: WebSocketMessage, session: Session, websocket: WebSocket
+) -> WebSocketResponse:
+    """handle a user's feedback response"""
+    if data.payload is None:
+        response = WebSocketResponse(
+            message=WebSocketMessageType.Error.value,
+            payload="No payload specified when sending feedback!",
+        )
+        return response
+    try:
+        feedback = JobFeedback(
+            **json.loads(data.payload or ""), src_ip=get_client_ip(websocket)
+        )
+    except Exception as error:
+        logger.error(
+            LogMessages.WebsocketError,
+            src_ip=get_client_ip(websocket),
+            error=str(error),
+            **data.model_dump(),
+        )
+        response = WebSocketResponse(
+            message=WebSocketMessageType.Error.value,
+            payload="Exception handling feedback, please try again!",
+        )
+        return response
+
+    try:
+        if JobFeedback.has_feedback(session, str(feedback.jobid)):
+            try:
+                query = select(JobFeedback).where(
+                    JobFeedback.jobid == str(feedback.jobid)
+                )
+                existing_feedback = session.exec(query).one()
+                for field in existing_feedback.model_fields:
+                    if field in feedback.model_fields:
+                        setattr(existing_feedback, field, getattr(feedback, field))
+                existing_feedback.created = datetime.utcnow()
+                session.add(existing_feedback)
+                session.commit()
+                session.refresh(existing_feedback)
+                response = WebSocketResponse(
+                    message=WebSocketMessageType.Feedback.value, payload="OK"
+                )
+                logger.debug(
+                    LogMessages.JobFeedback,
+                    **existing_feedback.model_dump(warnings=False, round_trip=True),
+                )
+            except NoResultFound:
+                logger.error(
+                    LogMessages.NoJobs.value,
+                    src_ip=get_client_ip(websocket),
+                    **feedback.model_dump(),
+                )
+                response = WebSocketResponse(
+                    message=WebSocketMessageType.Error.value,
+                    payload="No job!",
+                )
+
+        else:
+            session.add(feedback)
+            session.commit()
+            session.refresh(feedback)
+            logger.info(
+                LogMessages.JobFeedback,
+                **existing_feedback.model_dump(warnings=False, round_trip=True),
+            )
+            response = WebSocketResponse(
+                message=WebSocketMessageType.Feedback.value, payload="OK"
+            )
+    except Exception:
+        logger.error(LogMessages.WebsocketError, error=traceback.format_exc())
+        response = WebSocketResponse(
+            message=WebSocketMessageType.Error.value,
+            payload="Exception handling feedback, please try again!",
+        )
+    return response
+
+
 async def websocket_delete(
     data: WebSocketMessage, session: Session, websocket: WebSocket
 ) -> WebSocketResponse:
@@ -365,7 +451,7 @@ async def websocket_delete(
                 **data.model_dump(),
             )
             response = WebSocketResponse(
-                message=WebSocketMessageType.Delete.value, payload=res.model_dump_json()
+                message=WebSocketMessageType.Delete, payload=res.model_dump_json()
             )
         except NoResultFound:
             logger.info(
@@ -404,17 +490,9 @@ async def websocket_endpoint(
             try:
                 raw_msg = await websocket.receive_text()
                 data = WebSocketMessage.model_validate_json(raw_msg)
-                if data.message == "jobs":
-                    response = await websocket_jobs(data, session, websocket)
-                elif data.message == "delete":
-                    response = await websocket_delete(data, session, websocket)
-                elif data.message == "resubmit":
-                    response = await websocket_resubmit(data, session, websocket)
-                elif data.message == "waiting":
-                    response = await websocket_waiting(data, session, websocket)
             except Exception as error:
                 logger.error(
-                    LogMessages.WebsocketError,
+                    LogMessages.WebsocketError.value,
                     error=error,
                     src_ip=get_client_ip(websocket),
                     raw_msg=raw_msg,
@@ -422,6 +500,17 @@ async def websocket_endpoint(
                 response = WebSocketResponse(
                     message=WebSocketMessageType.Error.value, payload=str(error)
                 )
+            if data.message == WebSocketMessageType.Jobs.value:
+                response = await websocket_jobs(data, session, websocket)
+            elif data.message == WebSocketMessageType.Delete.value:
+                response = await websocket_delete(data, session, websocket)
+            elif data.message == WebSocketMessageType.Resubmit.value:
+                response = await websocket_resubmit(data, session, websocket)
+            elif data.message == WebSocketMessageType.Waiting.value:
+                response = await websocket_waiting(data, session, websocket)
+            elif data.message == WebSocketMessageType.Feedback.value:
+                response = await websocket_feedback(data, session, websocket)
+
             await websocket.send_text(response.as_message())
     except WebSocketDisconnect as disconn:
         logger.debug(
@@ -441,10 +530,10 @@ async def websocket_endpoint(
             logger.error(
                 LogMessages.WebsocketError, src_ip=get_client_ip(websocket), error=error
             )
-    except Exception as error:
-        logger.error(
-            LogMessages.WebsocketError, src_ip=get_client_ip(websocket), error=error
-        )
+    # except Exception as error:
+    #     logger.error(
+    #         LogMessages.WebsocketError, src_ip=get_client_ip(websocket), error=error
+    #     )
 
 
 @app.get("/healthcheck")

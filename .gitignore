@@ -8,5 +8,4 @@ dist/
 .env
 build/
 history.json
-.envrc
 node_modules/

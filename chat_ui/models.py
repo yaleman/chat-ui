@@ -5,6 +5,7 @@ from typing import Annotated, Any, List, Optional, Union
 from uuid import UUID
 
 from pydantic import AfterValidator, BaseModel, ConfigDict
+from sqlmodel import SQLModel
 
 
 class JobStatus(StrEnum):
@@ -21,6 +22,16 @@ class RequestType(StrEnum):
     PromptInjection = "prompt_injection"
     SensitiveDisclosure = "sensitive_disclosure"
     InsecureOutPut = "insecure_output"
+
+
+class WebSocketMessageType(StrEnum):
+    Jobs = "jobs"
+    Delete = "delete"
+    Error = "error"
+    Resubmit = "resubmit"
+    Feedback = "feedback"
+    Waiting = "waiting"
+    NewChat = "newchat"
 
 
 def validate_uuid(v: str) -> str:
@@ -69,7 +80,11 @@ class Job(BaseModel):
     request_type: Annotated[str, AfterValidator(validate_request_type)]
 
     @classmethod
-    def from_jobs(cls, jobs_object: Any) -> "Job":
+    def from_jobs(
+        cls,
+        jobs_object: Any,
+        jobsfeedback: Optional[SQLModel],
+    ) -> "Job":
         newobject = {
             "id": str(jobs_object.id),
             "userid": str(jobs_object.userid),
@@ -89,8 +104,16 @@ class JobDetail(Job):
 
     model_config = ConfigDict(from_attributes=True)
 
+    # if they've supplied feedback
+    feedback_comment: Optional[str] = None
+    feedback_success: Optional[int] = None
+
     @classmethod
-    def from_jobs(cls, jobs_object: Any) -> "JobDetail":
+    def from_jobs(
+        cls,
+        jobs_object: Any,
+        jobsfeedback: Optional[Any],
+    ) -> "JobDetail":
         newobject = {
             "id": str(jobs_object.id),
             "userid": str(jobs_object.userid),
@@ -103,6 +126,9 @@ class JobDetail(Job):
             "metadata": jobs_object.job_metadata,
             "request_type": jobs_object.request_type,
         }
+        if jobsfeedback is not None:
+            newobject["feedback_comment"] = jobsfeedback.comment
+            newobject["feedback_success"] = jobsfeedback.success
         return cls(**newobject)
 
 
@@ -120,14 +146,6 @@ class UserForm(BaseModel):
 class UserDetail(UserForm):
     created: datetime
     updated: Optional[datetime] = None
-
-
-class WebSocketMessageType(StrEnum):
-    Jobs = "jobs"
-    Delete = "delete"
-    Error = "error"
-    Resubmit = "resubmit"
-    Waiting = "waiting"
 
 
 def validate_websocket_message(v: str) -> str:
@@ -172,3 +190,4 @@ class LogMessages(StrEnum):
     WebsocketError = "websocket error"
     JobHistory = "job history"
     CompletionOutput = "completion output"
+    JobFeedback = "job feedback"

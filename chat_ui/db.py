@@ -1,9 +1,10 @@
 from datetime import datetime
+from enum import IntEnum
 
 from typing import Optional
 from uuid import UUID, uuid4
 import sqlmodel
-
+from sqlalchemy.exc import NoResultFound
 from chat_ui.models import JobStatus
 
 
@@ -47,3 +48,47 @@ class Jobs(sqlmodel.SQLModel, table=True):
             runtime=backgroundjob.runtime,
             job_metadata=backgroundjob.job_metadata,
         )
+
+
+class FeedbackSuccess(IntEnum):
+    """feedback success enum"""
+
+    Yes = 1
+    No = -1
+    Maybe = 0
+
+
+def validate_feedback_success(v: int) -> int:
+    """validates that feedback values are OK"""
+    FeedbackSuccess(v)  # this will raise an exception if it's not a valid input
+    return v
+
+
+class JobFeedback(sqlmodel.SQLModel, table=True):
+    """database representation of feedback"""
+
+    id: UUID = sqlmodel.Field(primary_key=True, default_factory=uuid4)
+    jobid: UUID = sqlmodel.Field(foreign_key="jobs.id")
+    success: int  # See FeedbackSuccess for the values, but it's 1, 0, -1
+    comment: str
+    src_ip: str
+    created: datetime = sqlmodel.Field(datetime.utcnow())
+
+    @classmethod
+    def has_feedback(cls, session: sqlmodel.Session, jobid: str) -> bool:
+        try:
+            query = sqlmodel.select(JobFeedback).where(JobFeedback.jobid == jobid)
+            session.exec(query).one()
+            return True
+        except NoResultFound:
+            return False
+
+    @classmethod
+    def get_feedback(
+        cls, session: sqlmodel.Session, jobid: str
+    ) -> Optional["JobFeedback"]:
+        try:
+            query = sqlmodel.select(JobFeedback).where(JobFeedback.jobid == jobid)
+            return session.exec(query).one()
+        except NoResultFound:
+            return None

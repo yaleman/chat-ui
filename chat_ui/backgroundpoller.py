@@ -140,11 +140,6 @@ class BackgroundPoller(threading.Thread):
         history_tokens = rough_history_tokens(job.history)
         total_history_tokens = sum([t[1] for t in history_tokens])
         while total_history_tokens > 2048:
-            logger.debug(
-                "popping history",
-                history_tokens=history_tokens,
-                history_length=len(job.history),
-            )
             job.history.pop(0)
             history_tokens = rough_history_tokens(job.history)
             total_history_tokens = sum([t[1] for t in history_tokens])
