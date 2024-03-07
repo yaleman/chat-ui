@@ -488,6 +488,7 @@ async def websocket_endpoint(
                 message=WebSocketMessageType.Error.value, payload="unknown message"
             )
             try:
+                raw_msg = ""
                 raw_msg = await websocket.receive_text()
                 data = WebSocketMessage.model_validate_json(raw_msg)
             except Exception as error:
@@ -495,7 +496,7 @@ async def websocket_endpoint(
                     LogMessages.WebsocketError.value,
                     error=error,
                     src_ip=get_client_ip(websocket),
-                    raw_msg=raw_msg,
+                    raw_msg=raw_msg or None,
                 )
                 response = WebSocketResponse(
                     message=WebSocketMessageType.Error.value, payload=str(error)
