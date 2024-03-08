@@ -1,7 +1,7 @@
 """ chat emulator using fastapi """
 
 from contextlib import asynccontextmanager
-from datetime import datetime, timedelta
+from datetime import datetime, UTC, timedelta
 import json
 import os
 import os.path
@@ -12,42 +12,42 @@ import sys
 import traceback
 
 
-from typing import Any, AsyncGenerator, Generator, List
+from typing import Any, AsyncGenerator, Generator, List, Sequence
+from uuid import UUID, uuid4
 from fastapi import (
     Depends,
     FastAPI,
     HTTPException,
-    BackgroundTasks,
     Request,
     WebSocket,
     WebSocketDisconnect,
 )
 from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.websockets import WebSocketState
 from loguru import logger
-from prometheus_fastapi_instrumentator import Instrumentator
+
+# from prometheus_fastapi_instrumentator import Instrumentator
 
 
-from sqlmodel import Session, select
+from sqlmodel import Session, or_, select
 import sqlmodel
 from sqlalchemy.exc import NoResultFound
-
+import sqlalchemy.engine
 from starlette.middleware.gzip import GZipMiddleware
 from starlette.middleware.sessions import SessionMiddleware
 from chat_ui.backgroundpoller import BackgroundPoller
 
 # from chat_ui.backgroundpoller import BackgroundPoller
-from chat_ui.config import Config
-from chat_ui.db import JobFeedback, Jobs, Users
-from chat_ui.logs import sink
+from .config import Config
+from .db import ChatUiDBSession, JobFeedback, Jobs, Users
+from .logs import sink
 
+from .forms import SessionUpdateForm, NewJobForm, UserDetail, UserForm
 from chat_ui.models import (
     Job,
     JobDetail,
     JobStatus,
     LogMessages,
-    NewJob,
-    UserDetail,
-    UserForm,
     WebSocketMessage,
     WebSocketMessageType,
     WebSocketResponse,
@@ -58,54 +58,112 @@ from chat_ui.utils import get_client_ip, get_waiting_jobs, html_from_response
 logger.remove()
 logger.add(sink=sink)
 
-
-connect_args = {"check_same_thread": False}
+if "pytest" in sys.modules:
+    connect_args = {"check_same_thread": False}
+else:
+    connect_args = {}
 sqlite_url = f"sqlite:///{Config().db_path}"
 engine = sqlmodel.create_engine(sqlite_url, echo=False, connect_args=connect_args)
+
+# helpful with lifecycle handlers
+
+
+def migrate_database(engine: sqlalchemy.engine.Engine) -> None:
+    """migrate the database"""
+    # backfill any chats that don't have sessions assigned after making sure the table exists
+    with Session(engine) as session:
+        try:
+            session.exec(select(Jobs).where(Jobs.sessionid is None))
+        except Exception as oe:
+            if "no such column: jobs.sessionid" in str(oe):
+                print("Adding sessionid column to jobs table!")
+                session.autoflush = False
+
+                session.exec(  # type: ignore
+                    sqlmodel.text("ALTER TABLE jobs ADD COLUMN sessionid VARCHAR(32)")
+                )
+                session.commit()
+            else:
+                logger.error(oe)
+                sys.exit(1)
+    with Session(engine) as session:
+        # identify the users that need upaating
+        logger.info("Checking for jobs with no session ID assigned.")
+        users = session.exec(  # type: ignore
+            sqlmodel.text("select distinct userid from jobs where sessionid is NULL")
+        ).all()
+
+        # generate a chat session for each user
+        for user in users:
+            sessionid = uuid4()
+            logger.info("fixing jobs for user", userid=user[0], sessionid=sessionid)
+            session.add(ChatUiDBSession(userid=user[0], sessionid=str(sessionid)))
+            session.commit()
+            numjobs = session.scalar(
+                sqlmodel.text(
+                    "select count(id) from jobs where sessionid is NULL and userid=:userid"
+                ).bindparams(userid=user[0])
+            )
+            session.exec(  # type: ignore
+                sqlmodel.text(
+                    "UPDATE jobs set sessionid=:sessionid where sessionid is NULL and userid=:userid"
+                ).bindparams(sessionid=str(sessionid), userid=user[0])
+            )
+            logger.info(
+                "set sessionids", userid=user[0], count=numjobs, sessionid=sessionid
+            )
+        session.commit()
+
+
+def startup_check_outstanding_jobs() -> None:
+    logger.info(
+        "Checking for outstanding jobs on startup and setting them to error status"
+    )
+    with Session(engine) as session:
+        jobs = session.exec(
+            select(Jobs).where(Jobs.status == JobStatus.Running.value)
+        ).all()
+        for job in jobs:
+            logger.warning("Job was running, setting to error", job_id=job.id)
+            job.status = JobStatus.Error.value
+            job.response = "Server restarted, please try this again"
+            job.updated = datetime.now(UTC)
+            session.add(job)
+        session.commit()
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[Any, Any]:
     """runs the background poller as the app is running"""
 
-    instrumentator.expose(app, should_gzip=True)
+    # instrumentator.expose(app)
 
     if "pytest" not in sys.modules:
 
+        # create all the tables
+        sqlmodel.SQLModel.metadata.create_all(engine)
+        migrate_database(engine)
+        startup_check_outstanding_jobs()
+
         t = BackgroundPoller(engine)
         t.start()
+    logger.info("Prechecks done, starting app")
 
-        logger.info(
-            "Checking for outstanding jobs on startup and setting them to error status"
-        )
-
-        with Session(engine) as session:
-            sqlmodel.SQLModel.metadata.create_all(engine)
-            jobs = session.exec(
-                select(Jobs).where(Jobs.status == JobStatus.Running.value)
-            ).all()
-            for job in jobs:
-                logger.warning("Job was running, setting to error", job_id=job.id)
-
-                job.status = JobStatus.Error.value
-                job.response = "Server restarted, please try this again"
-                job.updated = datetime.utcnow()
-                session.add(job)
-            session.commit()
     yield
+
+    logger.info("Shutting down app")
+
     t.message = "stop"
 
 
-# state = AppState()
 app = FastAPI(lifespan=lifespan)
-# app = FastAPI(lifespan=lifespan)
 app.add_middleware(
     SessionMiddleware,
     secret_key=random.sample(string.ascii_letters + string.digits, 32),
     session_cookie="chatsession",
 )
 app.add_middleware(GZipMiddleware)
-instrumentator = Instrumentator().instrument(app)
+# instrumentator = Instrumentator().instrument(app)
 
 
 def get_session() -> Generator[Session, None, None]:
@@ -155,7 +213,7 @@ async def post_user(
             select(Users).where(Users.userid == newuser.userid)
         ).one()
         existing_user.name = newuser.name
-        existing_user.updated = datetime.utcnow()
+        existing_user.updated = datetime.now(UTC)
         session.add(existing_user)
         session.commit()
         session.refresh(existing_user)
@@ -178,20 +236,14 @@ async def post_user(
 
 @app.post("/job")
 async def create_job(
-    job: NewJob,
+    job: NewJobForm,
     request: Request,
     session: Session = Depends(get_session),
 ) -> Job:
-
+    """create a new job"""
     client_ip = get_client_ip(request)
 
-    newjob = Jobs(
-        status=JobStatus.Created.value,
-        userid=job.userid,
-        prompt=job.prompt,
-        request_type=job.request_type,
-        client_ip=client_ip,
-    )
+    newjob = Jobs.from_newjobform(job, client_ip=client_ip)
 
     logger.info(
         LogMessages.NewJob,
@@ -206,11 +258,31 @@ async def create_job(
 
 @app.get("/jobs")
 async def jobs(
-    userid: str,
+    userid: UUID,
+    sessionid: str | None = None,
+    since: float | None = None,
     session: Session = Depends(get_session),
 ) -> List[Job]:
-    """query the jobs for a given userid"""
+    """query the jobs for a given userid
+
+    extra filters:
+
+    - sessionid (a given chat session id)
+    - since (a unix timestamp, only return jobs created/updated since this time)
+    """
     query = select(Jobs).where(Jobs.userid == userid)
+    if sessionid is not None:
+        query = query.where(Jobs.sessionid == sessionid)
+    if since is not None:
+        query = query.where(
+            or_(
+                (
+                    Jobs.updated is not None
+                    and Jobs.updated >= datetime.fromtimestamp(since, UTC)
+                ),
+                Jobs.created >= datetime.fromtimestamp(since, UTC),
+            )
+        )
     return [Job.from_jobs(job, None) for job in session.exec(query).all()]
 
 
@@ -240,9 +312,20 @@ async def websocket_jobs(
 ) -> WebSocketResponse:
     # serialize the jobs out so the websocket reader can parse them
     try:
+        payload = json.loads(data.payload or "")
         jobs = session.exec(
             select(Jobs).where(
-                Jobs.userid == data.userid, Jobs.status != JobStatus.Hidden.value
+                Jobs.userid == data.userid,
+                Jobs.status != JobStatus.Hidden.value,
+                or_(
+                    Jobs.created
+                    > datetime.fromtimestamp(float(payload.get("since", 0)), UTC),
+                    (
+                        Jobs.updated is not None
+                        and Jobs.updated
+                        > datetime.fromtimestamp(float(payload.get("since", 0)), UTC)
+                    ),
+                ),
             )
         ).all()
         payload = [Job.from_jobs(job, None) for job in jobs]
@@ -275,7 +358,7 @@ async def websocket_resubmit(
         if res.status == JobStatus.Error.value:
             res.status = JobStatus.Created.value
             res.response = ""
-            res.updated = datetime.utcnow()
+            res.updated = datetime.now(UTC)
             session.add(res)
             session.commit()
             session.refresh(res)
@@ -330,7 +413,7 @@ async def websocket_waiting(
         # don't want to hit the DB too often...
         (last_update, waiting) = get_waiting_jobs(session)
 
-        if last_update < datetime.utcnow() - timedelta(seconds=5):
+        if last_update < datetime.now(UTC) - timedelta(seconds=5):
             get_waiting_jobs.cache_clear()
             (last_update, waiting) = get_waiting_jobs(session)
 
@@ -390,7 +473,7 @@ async def websocket_feedback(
                 for field in existing_feedback.model_fields:
                     if field in feedback.model_fields:
                         setattr(existing_feedback, field, getattr(feedback, field))
-                existing_feedback.created = datetime.utcnow()
+                existing_feedback.created = datetime.now(UTC)
                 session.add(existing_feedback)
                 session.commit()
                 session.refresh(existing_feedback)
@@ -441,7 +524,7 @@ async def websocket_delete(
             query = select(Jobs).where(Jobs.id == job_id, Jobs.userid == data.userid)
             res = session.exec(query).one()
             res.status = JobStatus.Hidden.value
-            res.updated = datetime.utcnow()
+            res.updated = datetime.now(UTC)
             session.add(res)
             session.commit()
             session.refresh(res)
@@ -472,35 +555,55 @@ async def websocket_delete(
     return response
 
 
+class ConnectionManager:
+    def __init__(self) -> None:
+        self.active_connections: list[WebSocket] = []
+
+    async def connect(self, websocket: WebSocket) -> None:
+        await websocket.accept()
+        self.active_connections.append(websocket)
+
+    def disconnect(self, websocket: WebSocket) -> None:
+        self.active_connections.remove(websocket)
+
+
+# websocketmanager = ConnectionManager()
+
+
 @app.websocket("/ws")
 async def websocket_endpoint(
     websocket: WebSocket,
-    background_tasks: BackgroundTasks,
     session: Session = Depends(get_session),
 ) -> None:
+    # await websocketmanager.connect(websocket)
     await websocket.accept()
+
     if websocket.client is None:
         raise HTTPException(status_code=500, detail="Failed to accept websocket")
     logger.debug("New websocket connection", src_ip=get_client_ip(websocket))
     try:
-        while True:
-            response = WebSocketResponse(
-                message=WebSocketMessageType.Error.value, payload="unknown message"
-            )
+        while websocket.client_state == WebSocketState.CONNECTED:
             try:
                 raw_msg = ""
                 raw_msg = await websocket.receive_text()
+                response = WebSocketResponse(
+                    message=WebSocketMessageType.Error.value, payload="unknown message"
+                )
                 data = WebSocketMessage.model_validate_json(raw_msg)
             except Exception as error:
                 logger.error(
                     LogMessages.WebsocketError.value,
                     error=error,
                     src_ip=get_client_ip(websocket),
-                    raw_msg=raw_msg or None,
+                    raw_msg=raw_msg,
                 )
                 response = WebSocketResponse(
                     message=WebSocketMessageType.Error.value, payload=str(error)
                 )
+                await websocket.send_text(response.as_message())
+                await websocket.close()
+                return
+
             if data.message == WebSocketMessageType.Jobs.value:
                 response = await websocket_jobs(data, session, websocket)
             elif data.message == WebSocketMessageType.Delete.value:
@@ -511,7 +614,6 @@ async def websocket_endpoint(
                 response = await websocket_waiting(data, session, websocket)
             elif data.message == WebSocketMessageType.Feedback.value:
                 response = await websocket_feedback(data, session, websocket)
-
             await websocket.send_text(response.as_message())
     except WebSocketDisconnect as disconn:
         logger.debug(
@@ -531,10 +633,10 @@ async def websocket_endpoint(
             logger.error(
                 LogMessages.WebsocketError, src_ip=get_client_ip(websocket), error=error
             )
-    # except Exception as error:
-    #     logger.error(
-    #         LogMessages.WebsocketError, src_ip=get_client_ip(websocket), error=error
-    #     )
+        return
+    except Exception as error:
+        logger.error(error)
+        return
 
 
 @app.get("/healthcheck")
@@ -543,8 +645,89 @@ async def healthcheck() -> str:
     return "OK"
 
 
+def create_session(userid: UUID, session: Session) -> ChatUiDBSession:
+    """create a new session"""
+    new_session = ChatUiDBSession(userid=userid)
+    session.add(new_session)
+    session.commit()
+    session.refresh(new_session)
+    return new_session
+
+
+@app.post("/session/new/{userid}")
+async def session_new(
+    userid: UUID, session: Session = Depends(get_session)
+) -> ChatUiDBSession:
+    # check the userid exists
+    try:
+        if session.exec(select(Users).where(Users.userid == str(userid))).one() is None:
+            raise HTTPException(status_code=404, detail="User not found")
+    except NoResultFound:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    # create the new entry in the db
+    new_session = create_session(userid, session)
+
+    logger.info(LogMessages.NewSession, **new_session.model_dump(mode="json"))
+    return new_session
+
+
+@app.post("/session/{userid}/{sessionid}")
+async def session_update(
+    userid: UUID,
+    sessionid: UUID,
+    form: SessionUpdateForm,
+    session: Session = Depends(get_session),
+) -> ChatUiDBSession:
+
+    try:
+        chatsession = session.exec(
+            select(ChatUiDBSession).where(
+                ChatUiDBSession.userid == str(userid),
+                ChatUiDBSession.sessionid == str(sessionid),
+            )
+        ).one()
+
+    except NoResultFound:
+        raise HTTPException(status_code=404, detail="Session not found")
+    if chatsession is None:
+        raise HTTPException(status_code=404, detail="Session not found")
+    chatsession.name = form.name
+    session.add(chatsession)
+    session.commit()
+    session.refresh(chatsession)
+    return chatsession
+
+
+@app.get("/sessions/{userid}")
+async def get_user_sessions(
+    userid: UUID, create: bool = True, session: Session = Depends(get_session)
+) -> Sequence[ChatUiDBSession]:
+    try:
+        if session.exec(select(Users).where(Users.userid == str(userid))).one() is None:
+            raise HTTPException(status_code=404, detail="User not found")
+
+    except NoResultFound:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    query = (
+        select(ChatUiDBSession)
+        .where(ChatUiDBSession.userid == str(userid))
+        .order_by(ChatUiDBSession.created.desc())  # type: ignore
+        # because desc isn't a method of datetime but it works in sqlalchemy
+    )
+    res: Sequence[ChatUiDBSession] = session.exec(query).all()
+
+    # if there aren't any sessions, create one
+    if len(res) == 0 and create:
+        res = [create_session(userid, session)]
+
+    return res
+
+
 @app.get("/")
 async def index() -> HTMLResponse:
     """returns the contents of html/index.html as a HTMLResponse object"""
-    htmlfile = os.path.join(os.path.dirname(__file__), "html/index.html")
-    return HTMLResponse(open(htmlfile).read())
+    return HTMLResponse(
+        Path(os.path.join(os.path.dirname(__file__), "html/index.html")).read_bytes()
+    )

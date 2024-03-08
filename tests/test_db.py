@@ -1,27 +1,15 @@
-from typing import Generator
 from uuid import uuid4
 from loguru import logger
 
 import pytest
 import sqlmodel
-from chat_ui.db import JobFeedback, FeedbackSuccess, Jobs
+from chat_ui.db import ChatUiDBSession, JobFeedback, FeedbackSuccess, Jobs
 
 from chat_ui import app, get_session
 from chat_ui.models import JobStatus, RequestType
 from chat_ui.utils import get_waiting_jobs  # noqa: E402
 
-
-@pytest.fixture(name="session")
-def get_test_session() -> Generator[sqlmodel.Session, None, None]:
-    """get a session"""
-    engine = sqlmodel.create_engine(
-        "sqlite://",
-        connect_args={"check_same_thread": False},
-        poolclass=sqlmodel.StaticPool,
-    )
-    sqlmodel.SQLModel.metadata.create_all(engine)
-    with sqlmodel.Session(engine) as session:
-        yield session
+from . import get_test_session  # noqa: E402,F401
 
 
 def test_jobfeedback(session: sqlmodel.Session) -> None:
@@ -61,13 +49,21 @@ def test_get_waiting_jobs(session: sqlmodel.Session) -> None:
 
     assert get_waiting_jobs(session)[1] == 0
 
+    userid = uuid4()
+
+    chat_session = ChatUiDBSession(userid=userid)
+    session.add(chat_session)
+    session.commit()
+    session.refresh(chat_session)
+
     # create a job
     job = Jobs(
         client_ip="1.2.3.4",
         status=JobStatus.Created.value,
-        userid=str(uuid4()),
+        userid=str(userid),
         request_type=RequestType.Plain.value,
         prompt="this is a test",
+        sessionid=chat_session.sessionid,
     )
     session.add(job)
     session.commit()

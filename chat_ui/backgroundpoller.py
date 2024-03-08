@@ -1,7 +1,7 @@
 """ This polls the backend to check if it is up and running """
 
 import asyncio
-from datetime import datetime
+from datetime import datetime, UTC
 import json
 import threading
 import time
@@ -32,7 +32,7 @@ class BackgroundJob(BaseModel):
     client_ip: str
     userid: UUID
     status: str
-    created: datetime = Field(datetime.utcnow())
+    created: datetime = Field(datetime.now(UTC))
     updated: Optional[datetime] = None
     prompt: str
     response: Optional[str] = None
@@ -133,7 +133,7 @@ class BackgroundPoller(threading.Thread):
 
     async def handle_job(self, job: BackgroundJob) -> Jobs:
 
-        start_time = datetime.utcnow().timestamp()
+        start_time = datetime.now(UTC).timestamp()
         client = get_backend_client()
         # we need to make sure we're under the token limit
 
@@ -173,7 +173,7 @@ class BackgroundPoller(threading.Thread):
         else:
             usage = {}
 
-        job.runtime = datetime.utcnow().timestamp() - start_time
+        job.runtime = datetime.now(UTC).timestamp() - start_time
         job.response = completion.choices[0].message.content
         job.job_metadata = json.dumps(
             {
@@ -206,7 +206,7 @@ class BackgroundPoller(threading.Thread):
                         time.sleep(0.1)
                         continue
                     job.status = JobStatus.Running.value
-                    job.updated = datetime.utcnow()
+                    job.updated = datetime.now(UTC)
                     session.add(job)
                     session.commit()
                     session.refresh(job)
@@ -244,7 +244,7 @@ class BackgroundPoller(threading.Thread):
                         background_job_result = self.event_loop.run_until_complete(
                             self.handle_job(backgroundjob)
                         )
-                        job.updated = datetime.utcnow()
+                        job.updated = datetime.now(UTC)
                         background_job_result.model_dump(
                             exclude_unset=False, exclude_none=False
                         )
@@ -279,7 +279,7 @@ class BackgroundPoller(threading.Thread):
                                     **job.model_dump(),
                                 )
 
-                            job.updated = datetime.utcnow()
+                            job.updated = datetime.now(UTC)
                             session.add(job)
                             session.commit()
                             session.refresh(job)

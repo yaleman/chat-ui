@@ -58,7 +58,7 @@
         </nav>
         <div class="modal"
           data-bs-backdrop="static" data-bs-keyboard="false"
-          id="exampleModal" tabindex="-1" v-if="needsName">
+          id="exampleModal" tabindex="-1">
           <form @submit.prevent="saveUserDetails">
             <div
               class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
@@ -70,20 +70,11 @@
                     aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
-                  <div class="row">
-                    <div class="col-12">
-                      <label for="formName" class="form-label">Your name (not
-                        used for anything other than tracking!)</label>
-                      <input type="text" v-model.lazy.trim="name" id="formName"
-                        class="form-control"
-                        placeholder="Your name" aria-label="Your name">
-
-                    </div>
-                  </div>
                   <div class="row py-4">
                     <div class="col-12">
                       <h3>Debugging Details</h3>
-                      <p>User ID:{{userid}}</p>
+                      <p>User ID: {{userid}}</p>
+                      <p>Session ID: {{currentSessionid}}</p>
                       <p>System-wide pending jobs: {{ waitingJobs }}</p>
                     </li>
                   </div>
@@ -178,23 +169,24 @@
                 <div class="row">
                   <h6>Stats</h6>
                   <div class="col-12" v-if="this.selectedJob != null">
-
-                    Request type: {{this.jobs[this.selectedJob].request_type}}
-                    <span class="text-muted"
-                      v-if="this.jobs[this.selectedJob].created"><br />
-                      Created: {{this.jobs[this.selectedJob].created}}
-                    </span>
-                    <span class="text-muted"
-                      v-if="this.jobs[this.selectedJob].updated">
-                      <br />Last Update: {{this.jobs[this.selectedJob].updated}}
-                    </span>
-
-                    <h6 class="mb-2"
-                      :class="colorFromStatus(this.jobs[this.selectedJob].status) ">Status:
-                      {{ this.jobs[this.selectedJob].status }}
-                    </h6>
                     <ul
                       style="list-style-type: none; padding-left: 0px;">
+                      <li>Chat session ID:
+                        {{this.jobs[this.selectedJob].sessionid}}</li>
+                      <li>Request type:
+                        {{this.jobs[this.selectedJob].request_type}}</li>
+                      <li class="text-muted"
+                        v-if="this.jobs[this.selectedJob].created">
+                        Created: {{this.jobs[this.selectedJob].created}}
+                      </li>
+                      <li class="text-muted"
+                        v-if="this.jobs[this.selectedJob].updated">
+                        Last Update: {{this.jobs[this.selectedJob].updated}}
+                      </li>
+                      <li
+                        :class="colorFromStatus(this.jobs[this.selectedJob].status) ">Status:
+                        {{ this.jobs[this.selectedJob].status }}
+                      </li>
                       <li v-for="meta in getUsage(this.jobs[this.selectedJob])"
                         :key="meta">
                         {{meta}}
@@ -245,9 +237,13 @@
                 <div class="mb-3">
                   <label for="name" class="form-label">Your Name</label>
                   <input type="text" id="name"
+                    :class="{'is-invalid': !hasName}"
                     class="form-control form-control-lg"
-                    v-model.lazy.trim="name"
+                    v-model.lazy="name"
                     placeholder="Your name">
+                  <div class="invalid-feedback" v-if="!hasName">
+                    Please enter your name.
+                  </div>
                 </div>
 
                 <div class="mb-3">
@@ -277,86 +273,88 @@
                   </div>
 
                   <div class="mb-3 py-4">
-                    <button type="submit" class="btn btn-primary btn-lg">
+                    <button type="submit" class="btn btn-primary btn-lg"
+                      style="background-color: #6610f2;"
+                      :disabled="hasName && !currentPrompt">
                       Send
                       message</button>
                   </div>
                 </div>
-              </div>
-              <div class="col-6" v-if="this.initialLoad"><div
-                  style="padding: 1.25rem; border: 0.1rem solid  lightgrey; border-left-width: 0.25rem; border-left-color: #6610f2; border-top-left-radius: 0.25rem;border-bottom-left-radius: 0.25rem;">
-                  Checking for existing prompts...
-                </div>
-              </div>
-              <div class="col-6" v-if="!this.noJobs">
-                <h1>Submitted Prompts</h1>
-
-                <ul style="list-style-type: none">
-                  <li v-for="job in getJobList" :key="job.id">
-                    <div class="card">
-                      <div class="card-header py-3">
-
-                        <span v-if="job.prompt">
-                          You: {{job.prompt}}
-                        </span>
-                        <button type="button" v-if="job.response"
-                          class=" btn btn-secondary float-end"
-                          @click="showPromptDetail(job.id)">Feedback</button>
-                      </div>
-                      <ul class="list-group list-group-flush">
-                        <li class="list-group-item py-3"
-                          v-if="job.response">
-                          <h5>Response</h5>
-                          <div v-html="job.response"></div>
-
-                        </li>
-                        <li class="list-group-item">
-                          <span class="text-muted"
-                            v-if="job.updated">
-                            Created: {{job.created}}
-                          </span>
-                          <span class="text-muted" v-if="job.updated"><br />
-                            Last Update: {{job.updated}}
-                          </span>
-                          <!-- TODO: expose the token usage metadata -->
-                          <br />Request type: {{job.request_type}}
-                          <span v-if="job.runtime"><br />
-                            Runtime: {{Math.round(job.runtime)}} seconds
-                          </span>
-                          <h6 class="mb-2"
-                            :class="colorFromStatus(job.status) ">Status:
-                            {{ job.status }}
-                          </h6>
-                          <div>
-                            <ul
-                              style="list-style-type: none; padding-left: 0px;">
-                              <li v-for="meta in getUsage(job)" :key="meta">
-                                {{meta}}
-                              </li>
-                            </ul>
-                          </div>
-                          <div
-                            id="resubmit_job_{{job.id}}"
-                            @click="resubmitJob(job.id)"
-                            v-if="job.status=='error'">
-                            <div
-                              style="cursor: pointer; height: 2.0em; border: 1px solid black; background-color: #ffc107; text-align: center"
-                              class="my-2 mx-2">
-                              <img src="/img/arrow-up.svg"
-                                title="Re-submit this task"
-                                style="cursor: pointer; width: 20px; height: 20px; margin-top: 4px;" />Try
-                              again
-                            </div>
-
-                          </div>
-                        </li>
-                      </ul>
-                    </div>
-                  </li>
-                </ul>
+              </form>
+            </div>
+            <div class="col-6" v-if="this.initialLoad"><div
+                style="padding: 1.25rem; border: 0.1rem solid  lightgrey; border-left-width: 0.25rem; border-left-color: #6610f2; border-top-left-radius: 0.25rem;border-bottom-left-radius: 0.25rem;">
+                Checking for existing prompts...
               </div>
             </div>
-          </form>
+            <div class="col-6" v-if="!this.noJobs">
+              <h1>Submitted Prompts</h1>
+
+              <ul style="list-style-type: none">
+                <li v-for="job in getJobList" :key="job.id">
+                  <div class="card">
+                    <div class="card-header py-3">
+
+                      <span v-if="job.prompt">
+                        You: {{job.prompt}}
+                      </span>
+                      <button type="button" v-if="job.response"
+                        class=" btn btn-secondary float-end"
+                        @click="showPromptDetail(job.id)">Feedback</button>
+                    </div>
+                    <ul class="list-group list-group-flush">
+                      <li class="list-group-item py-3"
+                        v-if="job.response">
+                        <h5>Response</h5>
+                        <div v-html="job.response"></div>
+
+                      </li>
+                      <li class="list-group-item">
+                        <span class="text-muted"
+                          v-if="job.updated">
+                          Created: {{job.created}}
+                        </span>
+                        <span class="text-muted" v-if="job.updated"><br />
+                          Last Update: {{job.updated}}
+                        </span>
+                        <!-- TODO: expose the token usage metadata -->
+                        <br />Request type: {{job.request_type}}
+                        <span v-if="job.runtime"><br />
+                          Runtime: {{Math.round(job.runtime)}} seconds
+                        </span>
+                        <h6 class="mb-2"
+                          :class="colorFromStatus(job.status) ">Status:
+                          {{ job.status }}
+                        </h6>
+                        <div>
+                          <ul
+                            style="list-style-type: none; padding-left: 0px;">
+                            <li v-for="meta in getUsage(job)" :key="meta">
+                              {{meta}}
+                            </li>
+                          </ul>
+                        </div>
+                        <div
+                          id="resubmit_job_{{job.id}}"
+                          @click="resubmitJob(job.id)"
+                          v-if="job.status=='error'">
+                          <div
+                            style="cursor: pointer; height: 2.0em; border: 1px solid black; background-color: #ffc107; text-align: center"
+                            class="my-2 mx-2">
+                            <img src="/img/arrow-up.svg"
+                              title="Re-submit this task"
+                              style="cursor: pointer; width: 20px; height: 20px; margin-top: 4px;" />Try
+                            again
+                          </div>
+
+                        </div>
+                      </li>
+                    </ul>
+                  </div>
+                </li>
+              </ul>
+            </div>
+          </div>
 
         </div>
       </body>

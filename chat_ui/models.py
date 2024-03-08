@@ -34,8 +34,10 @@ class WebSocketMessageType(StrEnum):
     NewChat = "newchat"
 
 
-def validate_uuid(v: str) -> str:
+def validate_uuid(v: Union[str, UUID]) -> Union[str, UUID]:
     """validate a uuidv4"""
+    if isinstance(v, UUID):
+        return v
     try:
         res = UUID(f"{{{v}}}", version=4)
         assert res.version == 4, "Invalid userid - should be a uuid v4"
@@ -44,12 +46,12 @@ def validate_uuid(v: str) -> str:
     return v
 
 
-def validate_userid(v: str) -> str:
+def validate_userid(v: str | UUID) -> Union[str, UUID]:
     """validates that the userid is a uuid v4"""
     return validate_uuid(v)
 
 
-def validate_optional_userid(v: str) -> Optional[str]:
+def validate_optional_userid(v: Union[str, UUID]) -> Optional[Union[str, UUID]]:
     """validates that the userid is optionally a uuid v4"""
     if v is None:
         return v
@@ -73,11 +75,11 @@ def validate_request_type(v: str) -> str:
 
 class Job(BaseModel):
     id: Annotated[str, AfterValidator(validate_uuid)]
-    userid: Annotated[str, AfterValidator(validate_userid)]
     status: Annotated[str, AfterValidator(validate_job_status)]
     created: datetime
     updated: Optional[datetime] = None
-    request_type: Annotated[str, AfterValidator(validate_request_type)]
+    # request_type: Annotated[str, AfterValidator(validate_request_type)]
+    sessionid: UUID
 
     @classmethod
     def from_jobs(
@@ -87,17 +89,19 @@ class Job(BaseModel):
     ) -> "Job":
         newobject = {
             "id": str(jobs_object.id),
-            "userid": str(jobs_object.userid),
             "status": jobs_object.status,
             "created": jobs_object.created,
             "updated": jobs_object.updated,
-            "request_type": jobs_object.request_type,
+            # "request_type": jobs_object.request_type,
+            "sessionid": jobs_object.sessionid,
         }
         return cls(**newobject)
 
 
 class JobDetail(Job):
     prompt: str
+    sessionid: UUID
+
     response: Optional[str] = None
     runtime: Optional[float] = None
     metadata: Optional[str] = None
@@ -125,27 +129,12 @@ class JobDetail(Job):
             "runtime": jobs_object.runtime,
             "metadata": jobs_object.job_metadata,
             "request_type": jobs_object.request_type,
+            "sessionid": jobs_object.sessionid,
         }
         if jobsfeedback is not None:
             newobject["feedback_comment"] = jobsfeedback.comment
             newobject["feedback_success"] = jobsfeedback.success
         return cls(**newobject)
-
-
-class NewJob(BaseModel):
-    userid: Annotated[str, AfterValidator(validate_userid)]
-    prompt: str
-    request_type: Annotated[str, AfterValidator(validate_request_type)]
-
-
-class UserForm(BaseModel):
-    userid: Annotated[str, AfterValidator(validate_userid)]
-    name: str
-
-
-class UserDetail(UserForm):
-    created: datetime
-    updated: Optional[datetime] = None
 
 
 def validate_websocket_message(v: str) -> str:
@@ -191,3 +180,4 @@ class LogMessages(StrEnum):
     JobHistory = "job history"
     CompletionOutput = "completion output"
     JobFeedback = "job feedback"
+    NewSession = "new session"
