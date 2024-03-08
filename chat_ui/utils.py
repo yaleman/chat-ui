@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, UTC
 from functools import lru_cache
 from typing import Tuple, Union
 
@@ -49,12 +49,12 @@ def get_waiting_jobs(session: Session) -> Tuple[datetime, int]:
             res = 0
 
         logger.info(LogMessages.PendingJobs, pending_jobs=res)
-        return (datetime.utcnow(), res)
+        return (datetime.now(UTC), res)
     except NoResultFound:
-        return (datetime.utcnow(), 0)
+        return (datetime.now(UTC), 0)
     except Exception as error:
         logger.error("Failed to get waiting count", error=error)
-        return (datetime.utcnow(), 0)
+        return (datetime.now(UTC), 0)
 
 
 def html_from_response(input: str) -> str:

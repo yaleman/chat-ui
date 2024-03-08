@@ -7,10 +7,11 @@ createApp({
     data() {
         var data = {
             name: "",
-            userModalHidden: false,
+            userModalHidden: true,
             userModalErrors: "",
             userModalSuccess: "",
             jobs: {},
+            lastJobsCheck: 0,
             userid: "",
             useCase: "plain",
             currentPrompt: "",
@@ -28,18 +29,22 @@ createApp({
             promptFeedbackComments: "",
             promptFeedbackResult: 0,
 
+            // chat-session related things
+            currentSessionid: null,
+            sessions: [],
+
         };
 
         let name = localStorage.getItem("name");
         if (!name || name === "null") {
-            this.$nextTick(() => {
-                const show_name_modal = document.getElementById("showNameModal");
-                if (show_name_modal) {
-                    show_name_modal.click();
-                } else {
-                    console.debug("Couldn't find showNameModal button!");
-                }
-            });
+            // this.$nextTick(() => {
+            //     const show_name_modal = document.getElementById("showNameModal");
+            //     if (show_name_modal) {
+            //         show_name_modal.click();
+            //     } else {
+            //         console.debug("Couldn't find showNameModal button!");
+            //     }
+            // });
         } else {
             data.name = name;
         }
@@ -62,6 +67,7 @@ createApp({
         this.getNewWebSocket();
         this.poller = setInterval(this.updateJobs, jobPollIntervalMs);
         this.waitingPoller = setInterval(this.updateWaiting, jobPollIntervalMs);
+        setTimeout(this.getSessions, defaultNextRunMs);
         setTimeout(this.updateJobs, defaultNextRunMs);
     },
     computed: {
@@ -105,6 +111,9 @@ createApp({
         },
         isPolling() {
             return !(this.ws === null || this.ws.readystate == 0)
+        },
+        hasName() {
+            return this.name.trim().length > 0;
         }
     },
     methods: {
@@ -123,7 +132,6 @@ createApp({
         },
         deleteJob: function (jobid) {
             this.checkForWebSocket();
-
             if (confirm("Please confirm you want to delete this job")) {
                 const payload = {
                     "message": "delete",
@@ -223,6 +231,31 @@ createApp({
             });
             this.ws = ws;
         },
+        getSessions: function () {
+            /// gets the  sessions for this user
+            fetch(`/sessions/${this.userid}`, {
+                method: 'GET',
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            }).then(response => {
+                if (response.ok) {
+                    return response.json();
+                }
+                throw new Error('Failed to fetch sessions');
+            }).then(responseData => {
+                console.debug("Got sessions", responseData);
+                this.sessions = responseData;
+                // if this.currentSessionid is null, set it to the session with the most recent creation time
+                if (this.currentSessionid === null && responseData.length > 0) {
+                    this.currentSessionid = responseData[0].sessionid;
+                }
+
+
+            }).catch(err => {
+                console.error(`failed to fetch sessions: ${err}`);
+            });
+        },
         startPoller: function () {
             this.stopPoller();
             this.poller = setInterval(this.updateJobs, jobPollIntervalMs);
@@ -234,11 +267,18 @@ createApp({
             this.ws = null;
         },
         updateJobs: function () {
-            const payload = { "userid": this.userid, "message": "jobs" };
+            const payload = {
+                "userid": this.userid, "message": "jobs", "payload": JSON.stringify({
+                    "since": this.lastJobsCheck,
+                })
+            };
+
             this.checkForWebSocket();
             // it's OK to drop this if we don't have it going already, we'll try again soon
             if (this.ws.readyState === WebSocket.OPEN) {
                 this.ws.send(JSON.stringify(payload));
+                const now = new Date().getTime() / 1000;
+                this.lastJobsCheck = now;
             }
         },
         sendPrompt: function () {
@@ -246,6 +286,10 @@ createApp({
                 "userid": this.userid,
                 "prompt": this.currentPrompt,
                 "request_type": this.useCase,
+                "sessionid": this.currentSessionid,
+            }
+            if (!this.hasName) {
+                console.error("Name is empty!");
             }
             if (!this.currentPrompt.trim()) {
                 console.error("Prompt is empty");
