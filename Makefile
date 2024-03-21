@@ -28,7 +28,7 @@ docker/build:
 docker: ## Build and run the chat-ui docker container locally
 docker: docker/build
 	touch ~/.cache/chatui.sqlite3
-	docker run --rm -it --init -d \
+	docker run --rm -it --init \
 		--mount "type=bind,source=$(HOME)/.cache/chatui.sqlite3,target=/db/chatui.sqlite3" \
 		--name chat-ui \
 		-e "CHATUI_BACKEND_URL=$(CHATUI_BACKEND_URL)" \
