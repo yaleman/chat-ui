@@ -47,6 +47,12 @@
             <ul class="nav justify-content-end">
               <li class="nav-item px-1">
                 <button type="button" class="btn btn-light"
+                  @click="newSession()">
+                  New Chat Session
+                </button>
+              </li>
+              <li class="nav-item px-1">
+                <button type="button" class="btn btn-light"
                   data-bs-toggle="modal"
                   data-bs-target="#exampleModal" id="showNameModal">
                   Settings
@@ -275,9 +281,8 @@
                   <div class="mb-3 py-4">
                     <button type="submit" class="btn btn-primary btn-lg"
                       style="background-color: #6610f2;"
-                      :disabled="hasName && !currentPrompt">
-                      Send
-                      message</button>
+                      :disabled="!canSend">
+                      Send message</button>
                   </div>
                 </div>
               </form>

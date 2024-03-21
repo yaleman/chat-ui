@@ -4,12 +4,13 @@ import traceback
 from fastapi import WebSocket
 from loguru import logger
 
-from sqlmodel import Session, select
+from sqlmodel import Session, or_, select
 
 from sqlalchemy.exc import NoResultFound
 from chat_ui.db import JobFeedback, Jobs
 
 from chat_ui.models import (
+    Job,
     JobStatus,
     LogMessages,
     WebSocketMessage,
@@ -226,5 +227,44 @@ async def websocket_delete(
         response = WebSocketResponse(
             message=WebSocketMessageType.Error.value,
             payload="No ID specified when asking for delete!",
+        )
+    return response
+
+
+async def websocket_jobs(
+    data: WebSocketMessage, session: Session, websocket: WebSocket
+) -> WebSocketResponse:
+    # serialize the jobs out so the websocket reader can parse them
+    try:
+        payload = json.loads(data.payload or "")
+        jobs = session.exec(
+            select(Jobs).where(
+                Jobs.userid == data.userid,
+                Jobs.sessionid == payload.get("sessionid"),
+                Jobs.status != JobStatus.Hidden.value,
+                or_(
+                    Jobs.created
+                    > datetime.fromtimestamp(float(payload.get("since", 0)), UTC),
+                    (
+                        Jobs.updated is not None
+                        and Jobs.updated
+                        > datetime.fromtimestamp(float(payload.get("since", 0)), UTC)
+                    ),
+                ),
+            )
+        ).all()
+        payload = [Job.from_jobs(job, None) for job in jobs]
+        response = WebSocketResponse(
+            message=WebSocketMessageType.Jobs.value, payload=payload
+        )
+    except Exception as error:
+        logger.error(
+            "websocket_jobs error",
+            error=error,
+            src_ip=get_client_ip(websocket),
+            **data.model_dump(),
+        )
+        response = WebSocketResponse(
+            message=WebSocketMessageType.Error.value, payload="Failed to get job list!"
         )
     return response

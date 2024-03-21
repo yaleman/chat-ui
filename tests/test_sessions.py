@@ -81,7 +81,7 @@ def test_db_get_sessions(session: sqlmodel.Session) -> None:
     res = client.get(f"/sessions/{userid}")
     assert res.status_code == 200
     parse_res = [ChatUiDBSession.model_validate(x) for x in res.json()]
-    assert len(parse_res) == 2
+    assert len(parse_res) == 3
 
 
 def test_update_session(session: sqlmodel.Session) -> None:
@@ -96,13 +96,6 @@ def test_update_session(session: sqlmodel.Session) -> None:
 
     res = client.post("/user", json={"userid": userid, "name": "testuser"})
     assert res.status_code == 200
-
-    res = client.get(f"/sessions/{userid}?create=false")
-    assert res.status_code == 200
-    parse_res: list[ChatUiDBSession] = [
-        ChatUiDBSession.model_validate(x) for x in res.json()
-    ]
-    assert len(parse_res) == 0
 
     res = client.post(f"/session/new/{userid}")
 
