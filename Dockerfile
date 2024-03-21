@@ -24,5 +24,4 @@ ENV PATH="/home/appuser/.local/bin:${PATH}"
 RUN pip install --no-cache-dir /app/
 ENV CHATUI_DB_PATH=/db/chatui.sqlite3
 
-
-CMD ["chat-ui", "--host", "0.0.0.0"]
+CMD ["python", "-m", "chat_ui", "--host", "0.0.0.0"]
