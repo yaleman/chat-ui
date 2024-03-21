@@ -21,15 +21,20 @@ def main(reload: bool = False, host: str = "127.0.0.1", jsonlogs: bool = True) -
     else:
         workers = 4
 
-    uvicorn.run(
-        "chat_ui:app",
-        reload=reload,
-        port=9195,
-        host=host,
-        workers=workers,
-        forwarded_allow_ips="*",
-        reload_dirs=["chat_ui"],
-    )
+    options = {
+        "reload": False,
+        "port": 9195,
+        "host": host,
+        "workers": workers,
+        "forwarded_allow_ips": "*",
+        "timeout_keep_alive": 5,
+    }
+
+    if reload:
+        options["reload"] = True
+        options["reload_dirs"] = ["chat_ui"]
+
+    uvicorn.run("chat_ui:app", **options)  # type: ignore
 
 
 if __name__ == "__main__":

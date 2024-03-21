@@ -2,7 +2,6 @@
 
 from contextlib import asynccontextmanager
 from datetime import datetime, UTC
-import json
 import os
 import os.path
 import random
@@ -30,6 +29,8 @@ from prometheus_fastapi_instrumentator import Instrumentator
 
 from sqlmodel import Session, or_, select
 import sqlmodel
+
+from sqlalchemy import func
 from sqlalchemy.exc import NoResultFound
 import sqlalchemy.engine
 from starlette.middleware.gzip import GZipMiddleware
@@ -38,6 +39,7 @@ from chat_ui.backgroundpoller import BackgroundPoller
 from chat_ui.websocket_handlers import (
     websocket_delete,
     websocket_feedback,
+    websocket_jobs,
     websocket_resubmit,
     websocket_waiting,
 )
@@ -67,8 +69,6 @@ else:
     connect_args = {}
 sqlite_url = f"sqlite:///{Config().db_path}"
 engine = sqlmodel.create_engine(sqlite_url, echo=False, connect_args=connect_args)
-
-# helpful with lifecycle handlers
 
 
 def migrate_database(engine: sqlalchemy.engine.Engine) -> None:
@@ -142,7 +142,6 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[Any, Any]:
     instrumentator.expose(app)
 
     if "pytest" not in sys.modules:
-
         # create all the tables
         sqlmodel.SQLModel.metadata.create_all(engine)
         migrate_database(engine)
@@ -152,11 +151,13 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[Any, Any]:
         t.start()
     logger.info("Prechecks done, starting app")
 
+    # wait for FastAPI to do its thing
     yield
 
-    logger.info("Shutting down app")
-
-    t.message = "stop"
+    if "pytest" not in sys.modules:
+        logger.info("Shutting down app")
+        t.message = "stop"
+        t.join()
 
 
 app = FastAPI(lifespan=lifespan)
@@ -222,9 +223,13 @@ async def post_user(
         session.refresh(existing_user)
         newuser = existing_user
     except NoResultFound:
+        # we're adding a new user
         session.add(newuser)
         session.commit()
         session.refresh(newuser)
+        # create an initial session while we're here
+        create_session(newuser.userid, session)
+
     res = UserDetail(
         userid=str(newuser.userid),
         name=newuser.name,
@@ -310,44 +315,6 @@ async def job_detail(
         raise HTTPException(status_code=404, detail="Item not found")
 
 
-async def websocket_jobs(
-    data: WebSocketMessage, session: Session, websocket: WebSocket
-) -> WebSocketResponse:
-    # serialize the jobs out so the websocket reader can parse them
-    try:
-        payload = json.loads(data.payload or "")
-        jobs = session.exec(
-            select(Jobs).where(
-                Jobs.userid == data.userid,
-                Jobs.status != JobStatus.Hidden.value,
-                or_(
-                    Jobs.created
-                    > datetime.fromtimestamp(float(payload.get("since", 0)), UTC),
-                    (
-                        Jobs.updated is not None
-                        and Jobs.updated
-                        > datetime.fromtimestamp(float(payload.get("since", 0)), UTC)
-                    ),
-                ),
-            )
-        ).all()
-        payload = [Job.from_jobs(job, None) for job in jobs]
-        response = WebSocketResponse(
-            message=WebSocketMessageType.Jobs.value, payload=payload
-        )
-    except Exception as error:
-        logger.error(
-            "websocket_jobs error",
-            error=error,
-            src_ip=get_client_ip(websocket),
-            **data.model_dump(),
-        )
-        response = WebSocketResponse(
-            message=WebSocketMessageType.Error.value, payload="Failed to get job list!"
-        )
-    return response
-
-
 @app.websocket("/ws")
 async def websocket_endpoint(
     websocket: WebSocket,
@@ -375,11 +342,11 @@ async def websocket_endpoint(
                     src_ip=get_client_ip(websocket),
                     raw_msg=raw_msg,
                 )
-                response = WebSocketResponse(
-                    message=WebSocketMessageType.Error.value, payload=str(error)
-                )
-                await websocket.send_text(response.as_message())
-                await websocket.close()
+                # response = WebSocketResponse(
+                #     message=WebSocketMessageType.Error.value, payload=str(error)
+                # )
+                # await websocket.send_text(response.as_message())
+                # await websocket.close()
                 return
 
             if data.message == WebSocketMessageType.Jobs.value:
@@ -423,12 +390,26 @@ async def healthcheck() -> str:
     return "OK"
 
 
+def user_has_sessions(userid: UUID, session: Session) -> bool:
+    query = select(func.count(ChatUiDBSession.sessionid)).where(  # type: ignore
+        ChatUiDBSession.userid == str(userid)
+    )
+    try:
+        res = session.scalar(query)
+        if res is None:
+            return False
+        return res > 0
+    except NoResultFound:
+        return False
+
+
 def create_session(userid: UUID, session: Session) -> ChatUiDBSession:
     """create a new session"""
     new_session = ChatUiDBSession(userid=userid)
     session.add(new_session)
     session.commit()
     session.refresh(new_session)
+    logger.info(LogMessages.NewSession, **new_session.model_dump(mode="json"))
     return new_session
 
 
@@ -483,21 +464,25 @@ async def get_user_sessions(
 ) -> Sequence[ChatUiDBSession]:
     try:
         if session.exec(select(Users).where(Users.userid == str(userid))).one() is None:
+            logger.info("User not found when asking for sessions", userid=userid)
             raise HTTPException(status_code=404, detail="User not found")
-
     except NoResultFound:
+        logger.info("User not found when asking for sessions", userid=userid)
         raise HTTPException(status_code=404, detail="User not found")
 
-    query = (
-        select(ChatUiDBSession)
-        .where(ChatUiDBSession.userid == str(userid))
-        .order_by(ChatUiDBSession.created.desc())  # type: ignore
-        # because desc isn't a method of datetime but it works in sqlalchemy
-    )
-    res: Sequence[ChatUiDBSession] = session.exec(query).all()
+    try:
+        query = (
+            select(ChatUiDBSession)
+            .where(ChatUiDBSession.userid == str(userid))
+            .order_by(ChatUiDBSession.created.desc())  # type: ignore
+            # because desc isn't a method of datetime but it works in sqlalchemy
+        )
+        res: Sequence[ChatUiDBSession] = session.exec(query).all()
 
-    # if there aren't any sessions, create one
-    if len(res) == 0 and create:
+        # if there aren't any sessions, create one
+        if len(res) == 0 and create:
+            res = [create_session(userid, session)]
+    except NoResultFound:
         res = [create_session(userid, session)]
 
     return res

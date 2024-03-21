@@ -31,6 +31,7 @@ createApp({
 
             // chat-session related things
             currentSessionid: null,
+            currentSessionName: "",
             sessions: [],
 
         };
@@ -85,6 +86,14 @@ createApp({
         },
         hasTasks() {
             return this.tasks.length > 0;
+        },
+        canSend() {
+            if (this.name === null || this.name == "") {
+                return false
+            } else if (this.currentPrompt === null || this.currentPrompt == "") {
+                return false
+            }
+            return true;
         },
 
         noJobs() {
@@ -267,9 +276,15 @@ createApp({
             this.ws = null;
         },
         updateJobs: function () {
+            if (this.currentSessionid === null) {
+                console.debug("Not updating jobs because currentSessionid is null, asking for a new session!");
+                this.newSession();
+            }
+
             const payload = {
                 "userid": this.userid, "message": "jobs", "payload": JSON.stringify({
                     "since": this.lastJobsCheck,
+                    "sessionid": this.currentSessionid,
                 })
             };
 
@@ -281,7 +296,39 @@ createApp({
                 this.lastJobsCheck = now;
             }
         },
+        newSession: function () {
+            if (this.name == "" || this.name === null) {
+                console.debug("Can't create new session because name is blank!");
+                return;
+            }
+
+            this.jobs = {};
+            this.lastJobsCheck = 0;
+
+            url = `/session/new/${this.userid}`;
+            fetch(url, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            }).then(response => {
+                if (response.ok) {
+                    return response.json();
+                }
+                throw new Error('Failed to create new session');
+            }).then(responseData => {
+                console.debug("Got new session", responseData);
+                this.currentSessionid = responseData.sessionid;
+                this.currentSessionName = responseData.name;
+            }).catch(err => {
+                console.error(`failed to create new session: ${err}`);
+            });
+
+        },
         sendPrompt: function () {
+            if (this.currentSessionid === null || this.currentSessionid === "") {
+
+            }
             const payload = {
                 "userid": this.userid,
                 "prompt": this.currentPrompt,
@@ -381,7 +428,6 @@ createApp({
             this.jobs[this.selectedJob]["feedback_comment"] = this.promptFeedbackComments;
         },
         saveUserDetails: function () {
-
             const payload = {
                 "name": this.name,
                 "userid": this.userid
@@ -403,6 +449,7 @@ createApp({
                 }
                 // hide the bootstrap modal
             });
+            this.getSessions();
 
         },
         colorFromStatus: function (status) {
