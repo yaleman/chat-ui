@@ -3,6 +3,8 @@ const { createApp } = Vue
 const jobPollIntervalMs = 2500;
 const defaultNextRunMs = 500;
 
+/* TODO: implement "session name" thingie */
+
 createApp({
     data() {
         var data = {
@@ -34,6 +36,9 @@ createApp({
             currentSessionName: "",
             sessions: [],
 
+            // session loader
+            selectSessionModal: null,
+
         };
 
         let name = localStorage.getItem("name");
@@ -48,6 +53,11 @@ createApp({
             // });
         } else {
             data.name = name;
+        }
+
+        let sessionId = localStorage.getItem("sessionId");
+        if (sessionId) {
+            data.currentSessionid = sessionId;
         }
 
         let userid = localStorage.getItem('userid');
@@ -320,10 +330,24 @@ createApp({
                 console.debug("Got new session", responseData);
                 this.currentSessionid = responseData.sessionid;
                 this.currentSessionName = responseData.name;
+                localStorage.setItem("sessionId", responseData.sessionid);
             }).catch(err => {
                 console.error(`failed to create new session: ${err}`);
             });
 
+        },
+        showSessionModal: function () {
+            this.selectSessionModal = new bootstrap.Modal(document.getElementById('sessionModal'), {});
+            this.selectSessionModal.show();
+        },
+        selectSession: function (sessionid) {
+            console.log(`Loading session ${sessionid}`);
+            this.currentSessionid = sessionid;
+            this.jobs = {};
+            this.lastJobsCheck = 0;
+            this.updateJobs();
+            localStorage.setItem("sessionId", sessionid);
+            this.selectSessionModal.hide();
         },
         sendPrompt: function () {
             if (this.currentSessionid === null || this.currentSessionid === "") {

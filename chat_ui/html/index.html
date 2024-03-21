@@ -47,6 +47,15 @@
             <ul class="nav justify-content-end">
               <li class="nav-item px-1">
                 <button type="button" class="btn btn-light"
+                  @click="showSessionModal()"
+                  id="showSessionModal">
+                  <!-- data-bs-toggle="modal"
+                data-bs-target="#sessionModal"  -->
+                  Sessions
+                </button>
+              </li>
+              <li class="nav-item px-1">
+                <button type="button" class="btn btn-light"
                   @click="newSession()">
                   New Chat Session
                 </button>
@@ -54,8 +63,8 @@
               <li class="nav-item px-1">
                 <button type="button" class="btn btn-light"
                   data-bs-toggle="modal"
-                  data-bs-target="#exampleModal" id="showNameModal">
-                  Settings
+                  data-bs-target="#debugModal" id="showDebugModal">
+                  Debug
                 </button>
               </li>
 
@@ -63,14 +72,46 @@
           </div>
         </nav>
         <div class="modal"
-          data-bs-backdrop="static" data-bs-keyboard="false"
-          id="exampleModal" tabindex="-1">
+          id="sessionModal" tabindex="-1">
+
+          <div
+            class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+            <div class="modal-content">
+              <div class="modal-header">
+                <h5 class="modal-title">Chat Sessions</h5>
+                <button type="button" class="btn-close"
+                  data-bs-dismiss="modal" id="closeModal"
+                  aria-label="Close"></button>
+              </div>
+              <div class="modal-body">
+                <div class="row py-4">
+                  <div class="col-12">
+
+                    <ul>
+                      <li v-for="session in sessions" :key="session.id">
+                        <a href="#" @click="selectSession(session.sessionid)">
+                          {{session.name}} <span
+                            v-if="session.updated != null">-
+                            {{session.updated}}</span></a>
+                      </li>
+                    </ul>
+                  </div>
+                </div>
+
+              </div>
+
+            </div>
+          </div>
+        </div>
+
+        <div class="modal"
+          id="debugModal" tabindex="-1">
           <form @submit.prevent="saveUserDetails">
             <div
               class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
               <div class="modal-content">
                 <div class="modal-header">
-                  <h5 class="modal-title">Settings</h5>
+                  <h5 class="modal-title">Debug Details</h5>
                   <button type="button" class="btn-close"
                     data-bs-dismiss="modal" id="closeModal"
                     aria-label="Close"></button>
@@ -78,7 +119,7 @@
                 <div class="modal-body">
                   <div class="row py-4">
                     <div class="col-12">
-                      <h3>Debugging Details</h3>
+
                       <p>User ID: {{userid}}</p>
                       <p>Session ID: {{currentSessionid}}</p>
                       <p>System-wide pending jobs: {{ waitingJobs }}</p>
@@ -112,9 +153,6 @@
                   </div>
                 </div>
                 <div class="modal-footer">
-                  <!-- TODO: disable the save button if it's empty -->
-                  <button type="submit" class="btn btn-primary">Save
-                    changes</button>
                 </div>
               </div>
             </div>
@@ -158,10 +196,12 @@
 
                   <div class="row">
                     <div class="col-12 px-2">
-                      <label for="comments" class="form-label">Comments</label>
+                      <label for="comments"
+                        class="form-label">Comments</label>
 
                       <input type="text" id="comments" name="comments"
-                        class="form-control" v-model="promptFeedbackComments" />
+                        class="form-control"
+                        v-model="promptFeedbackComments" />
                     </div>
                   </div>
 
@@ -193,7 +233,8 @@
                         :class="colorFromStatus(this.jobs[this.selectedJob].status) ">Status:
                         {{ this.jobs[this.selectedJob].status }}
                       </li>
-                      <li v-for="meta in getUsage(this.jobs[this.selectedJob])"
+                      <li
+                        v-for="meta in getUsage(this.jobs[this.selectedJob])"
                         :key="meta">
                         {{meta}}
                       </li>
