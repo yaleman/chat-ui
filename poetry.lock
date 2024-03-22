@@ -149,13 +149,13 @@ all = ["email-validator (>=2.0.0)", "httpx (>=0.23.0)", "itsdangerous (>=1.1.0)"
 
 [[package]]
 name = "fortune-python"
-version = "1.0.3"
+version = "1.1.0"
 description = "A Fortune clone in Python"
 optional = false
 python-versions = ">=3.8"
 files = [
-    {file = "fortune-python-1.0.3.tar.gz", hash = "sha256:e9d516d696a793519b9a3ce5c5f22f0b5eef5bd9fdea40b009dc22ca864e1b55"},
-    {file = "fortune_python-1.0.3-py3-none-any.whl", hash = "sha256:8a045c93da39621454d39c188f3874b3c686499a62e73a077c0d853ec5157344"},
+    {file = "fortune-python-1.1.0.tar.gz", hash = "sha256:3e36c372210fea975079b28cd0a9783ec1a36fe7454275343ce3f42a20f743e3"},
+    {file = "fortune_python-1.1.0-py3-none-any.whl", hash = "sha256:6c39d880c103c63b2dd0e049441fa296bbdecdc65c5d909a84bdee916f0b5ce6"},
 ]
 
 [[package]]
@@ -601,4 +601,4 @@ standard = ["colorama (>=0.4)", "httptools (>=0.5.0)", "python-dotenv (>=0.13)",
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.10"
-content-hash = "15673bca05b3ccaeadbc41073f772a6795d7f2eb0cd89b383f71f4b323be9c6a"
+content-hash = "55f45a3b545066ff2adaff54861d629d8e9919617cab4c700ce9f9ffc721582a"
