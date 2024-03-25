@@ -36,7 +36,7 @@ def get_backend_client() -> AsyncOpenAI:
 @lru_cache(maxsize=2)
 def get_waiting_jobs(session: Session) -> Tuple[datetime, int]:
     try:
-        query = select(func.count(Jobs.id)).where(  # type: ignore
+        query = select(func.count(Jobs.id)).where(
             or_(
                 Jobs.status == JobStatus.Created.value,
                 Jobs.status == JobStatus.Running.value,

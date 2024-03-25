@@ -1,9 +1,12 @@
 from datetime import datetime, UTC, timedelta
 import json
 import traceback
+from typing import Optional
+from uuid import UUID
 from fastapi import WebSocket
 from loguru import logger
 
+from pydantic import BaseModel
 from sqlmodel import Session, or_, select
 
 from sqlalchemy.exc import NoResultFound
@@ -68,7 +71,7 @@ async def websocket_resubmit(
         )
     except Exception as error:
         logger.error(
-            LogMessages.FailedResubmit,
+            LogMessages.ResubmitFailed,
             error=error,
             src_ip=get_client_ip(websocket),
             **data.model_dump(),
@@ -140,11 +143,9 @@ async def websocket_feedback(
         return response
 
     try:
-        if JobFeedback.has_feedback(session, str(feedback.jobid)):
+        if JobFeedback.has_feedback(session, feedback.jobid):
             try:
-                query = select(JobFeedback).where(
-                    JobFeedback.jobid == str(feedback.jobid)
-                )
+                query = select(JobFeedback).where(JobFeedback.jobid == feedback.jobid)
                 existing_feedback = session.exec(query).one()
                 for field in existing_feedback.model_fields:
                     if field in feedback.model_fields:
@@ -231,31 +232,37 @@ async def websocket_delete(
     return response
 
 
+class WebSocketJobsMessage(BaseModel):
+    """the message sent when asking for jobs"""
+
+    sessionid: UUID
+    since: Optional[float] = None
+
+
 async def websocket_jobs(
     data: WebSocketMessage, session: Session, websocket: WebSocket
 ) -> WebSocketResponse:
     # serialize the jobs out so the websocket reader can parse them
     try:
-        payload = json.loads(data.payload or "")
+        payload = WebSocketJobsMessage.model_validate_json(data.payload or "")
+        logger.debug("Getting jobs since {}", payload.since, **payload.model_dump())
+        payload_timestamp = datetime.fromtimestamp(payload.since or 0.0, UTC)
         jobs = session.exec(
             select(Jobs).where(
                 Jobs.userid == data.userid,
-                Jobs.sessionid == payload.get("sessionid"),
+                Jobs.sessionid == payload.sessionid,
                 Jobs.status != JobStatus.Hidden.value,
                 or_(
-                    Jobs.created
-                    > datetime.fromtimestamp(float(payload.get("since", 0)), UTC),
-                    (
-                        Jobs.updated is not None
-                        and Jobs.updated
-                        > datetime.fromtimestamp(float(payload.get("since", 0)), UTC)
-                    ),
+                    Jobs.created > payload_timestamp,
+                    (Jobs.updated is not None and Jobs.updated > payload_timestamp),
                 ),
             )
         ).all()
-        payload = [Job.from_jobs(job, None) for job in jobs]
+        logger.debug("Found {} jobs", len(jobs), **payload.model_dump(mode="json"))
+
+        response_payload = [Job.from_jobs(job, None) for job in jobs]
         response = WebSocketResponse(
-            message=WebSocketMessageType.Jobs.value, payload=payload
+            message=WebSocketMessageType.Jobs.value, payload=response_payload
         )
     except Exception as error:
         logger.error(

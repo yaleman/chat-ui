@@ -40,6 +40,7 @@ class BackgroundJob(BaseModel):
     runtime: Optional[float] = None
     job_metadata: Optional[str] = None
     history: List[Jobs] = []
+    sessionid: UUID
 
     @classmethod
     def from_jobs(cls, job: Jobs) -> "BackgroundJob":
@@ -55,6 +56,7 @@ class BackgroundJob(BaseModel):
             request_type=job.request_type,
             runtime=job.runtime,
             job_metadata=job.job_metadata,
+            sessionid=job.sessionid,
         )
 
     def get_history(
@@ -163,7 +165,7 @@ class BackgroundPoller(threading.Thread):
         )
 
         logger.debug(
-            LogMessages.CompletionOutput,
+            LogMessages.JobCompletionOutput,
             userid=job.userid,
             job_id=job.id,
             **completion.model_dump(),
@@ -251,6 +253,7 @@ class BackgroundPoller(threading.Thread):
                         for key in background_job_result.model_fields.keys():
                             if key in job.model_fields:
                                 setattr(job, key, getattr(background_job_result, key))
+                        logger.debug("Saving job: {}", job.model_dump())
                         session.add(job)
                         session.commit()
                         session.refresh(job)

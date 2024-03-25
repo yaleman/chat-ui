@@ -20,8 +20,8 @@ def test_jobfeedback(session: sqlmodel.Session) -> None:
 
     app.dependency_overrides[get_session] = get_session_override
 
-    jobid = str(uuid4())
-    userid = str(uuid4())
+    jobid = uuid4()
+    userid = uuid4()
 
     assert JobFeedback.has_feedback(session, jobid) is False
 
@@ -60,7 +60,7 @@ def test_get_waiting_jobs(session: sqlmodel.Session) -> None:
     job = Jobs(
         client_ip="1.2.3.4",
         status=JobStatus.Created.value,
-        userid=str(userid),
+        userid=userid,
         request_type=RequestType.Plain.value,
         prompt="this is a test",
         sessionid=chat_session.sessionid,

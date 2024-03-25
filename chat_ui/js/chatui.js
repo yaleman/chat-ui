@@ -42,22 +42,19 @@ createApp({
         };
 
         let name = localStorage.getItem("name");
-        if (!name || name === "null") {
-            // this.$nextTick(() => {
-            //     const show_name_modal = document.getElementById("showNameModal");
-            //     if (show_name_modal) {
-            //         show_name_modal.click();
-            //     } else {
-            //         console.debug("Couldn't find showNameModal button!");
-            //     }
-            // });
-        } else {
+        if (name) {
             data.name = name;
         }
 
         let sessionId = localStorage.getItem("sessionId");
         if (sessionId) {
             data.currentSessionid = sessionId;
+        }
+
+
+        let sessionName = localStorage.getItem("sessionName");
+        if (sessionName) {
+            data.currentSessionName = sessionName;
         }
 
         let userid = localStorage.getItem('userid');
@@ -78,8 +75,15 @@ createApp({
         this.getNewWebSocket();
         this.poller = setInterval(this.updateJobs, jobPollIntervalMs);
         this.waitingPoller = setInterval(this.updateWaiting, jobPollIntervalMs);
-        setTimeout(this.getSessions, defaultNextRunMs);
-        setTimeout(this.updateJobs, defaultNextRunMs);
+        this.sessionPoller = setInterval(this.getSessions, jobPollIntervalMs);
+        setTimeout(() => {
+            // ensures the user's in the DB
+            this.saveUserDetails();
+            // ensures a session exists
+            this.getSessions();
+            // check for jobs.
+            this.updateJobs();
+        }, defaultNextRunMs);
     },
     computed: {
         haveWaitingJobs() {
@@ -133,9 +137,20 @@ createApp({
         },
         hasName() {
             return this.name.trim().length > 0;
+        },
+        feedbackButtonClass() {
+            return this.feedbackButtonClassFunc(this.selectedJob);
         }
     },
     methods: {
+        feedbackButtonClassFunc(jobid) {
+            if (this.jobs[jobid]) {
+                if (this.jobs[jobid]["feedback_success"] !== null) {
+                    return "btn-success";
+                }
+            }
+            return "btn-secondary";
+        },
         updateWaiting: function () {
             const payload = { "userid": this.userid, "message": "waiting" };
             this.checkForWebSocket();
@@ -263,14 +278,14 @@ createApp({
                 }
                 throw new Error('Failed to fetch sessions');
             }).then(responseData => {
-                console.debug("Got sessions", responseData);
+                // console.debug("Got sessions", responseData);
                 this.sessions = responseData;
-                // if this.currentSessionid is null, set it to the session with the most recent creation time
-                if (this.currentSessionid === null && responseData.length > 0) {
+                if (!this.currentSessionid && responseData.length > 0) {
                     this.currentSessionid = responseData[0].sessionid;
                 }
-
-
+                if (!this.currentSessionName && responseData.length > 0) {
+                    this.currentSessionName = responseData[0].name;
+                }
             }).catch(err => {
                 console.error(`failed to fetch sessions: ${err}`);
             });
@@ -288,7 +303,7 @@ createApp({
         updateJobs: function () {
             if (this.currentSessionid === null) {
                 console.debug("Not updating jobs because currentSessionid is null, asking for a new session!");
-                this.newSession();
+                return
             }
 
             const payload = {
@@ -302,20 +317,16 @@ createApp({
             // it's OK to drop this if we don't have it going already, we'll try again soon
             if (this.ws.readyState === WebSocket.OPEN) {
                 this.ws.send(JSON.stringify(payload));
-                const now = new Date().getTime() / 1000;
+                // always look back 30 seconds
+                const now = (new Date().getTime() / 1000) - 30;
                 this.lastJobsCheck = now;
             }
         },
         newSession: function () {
-            if (this.name == "" || this.name === null) {
-                console.debug("Can't create new session because name is blank!");
-                return;
-            }
-
             this.jobs = {};
             this.lastJobsCheck = 0;
 
-            url = `/session/new/${this.userid}`;
+            const url = `/session/new/${this.userid}`;
             fetch(url, {
                 method: 'POST',
                 headers: {
@@ -336,6 +347,42 @@ createApp({
             });
 
         },
+        updateSession: function () {
+            // TODO: update session in backend
+            if (this.currentSessionName.trim() == "" || this.currentSessionName === null) {
+                console.debug("No session name, not going to set it to an empty value")
+                return
+            }
+
+            if (this.userid === null || this.userid === "" || this.currentSessionid === null || this.currentSessionid === "") {
+                console.debug("No session id or user id, not going to try and set session data")
+                return
+            }
+
+
+            const payload = {
+                "name": this.currentSessionName,
+            };
+            console.debug("Sending payload:", payload);
+            const url = `/session/${this.userid}/${this.currentSessionid}`;
+
+            fetch(url, {
+                method: 'POST',
+                headers: {
+                    "Content-type": "application/json"
+                },
+                body: JSON.stringify(payload)
+            }).then(response => {
+                if (response.ok) {
+                    console.log("Session updated!");
+                    return response.json();
+                }
+                throw new Error('Failed to update session');
+            });
+
+            localStorage.setItem("sessionName", this.currentSessionName);
+            localStorage.setItem("sessionId", this.currentSessionid);
+        },
         showSessionModal: function () {
             this.selectSessionModal = new bootstrap.Modal(document.getElementById('sessionModal'), {});
             this.selectSessionModal.show();
@@ -343,6 +390,7 @@ createApp({
         selectSession: function (sessionid) {
             console.log(`Loading session ${sessionid}`);
             this.currentSessionid = sessionid;
+            this.currentSessionName = this.sessions.find((session) => session.sessionid === sessionid).name;
             this.jobs = {};
             this.lastJobsCheck = 0;
             this.updateJobs();
@@ -351,7 +399,8 @@ createApp({
         },
         sendPrompt: function () {
             if (this.currentSessionid === null || this.currentSessionid === "") {
-
+                console.error("No session id, can't send prompt");
+                return;
             }
             const payload = {
                 "userid": this.userid,
@@ -549,6 +598,12 @@ createApp({
         name: function (newName) {
             if (newName) {
                 this.saveUserDetails();
+            }
+        },
+        currentSessionName: function (newSessionName) {
+            if (newSessionName) {
+                console.log("Session name change!", newSessionName);
+                this.updateSession();
             }
         }
     }

@@ -28,6 +28,7 @@ openai = "^1.12.0"
 sqlmodel = "^0.0.14"
 prometheus-fastapi-instrumentator = "^6.1.0"
 cmarkgfm = "^2024.1.14"
+sqlalchemy-utils = "^0.41.2"
 
 [tool.poetry.group.dev.dependencies]
 mypy = "^1.5.0"

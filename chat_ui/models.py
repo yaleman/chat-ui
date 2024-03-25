@@ -74,7 +74,7 @@ def validate_request_type(v: str) -> str:
 
 
 class Job(BaseModel):
-    id: Annotated[str, AfterValidator(validate_uuid)]
+    id: Annotated[UUID, AfterValidator(validate_uuid)]
     status: Annotated[str, AfterValidator(validate_job_status)]
     created: datetime
     updated: Optional[datetime] = None
@@ -88,7 +88,7 @@ class Job(BaseModel):
         jobsfeedback: Optional[SQLModel],
     ) -> "Job":
         newobject = {
-            "id": str(jobs_object.id),
+            "id": jobs_object.id.hex,
             "status": jobs_object.status,
             "created": jobs_object.created,
             "updated": jobs_object.updated,
@@ -119,8 +119,8 @@ class JobDetail(Job):
         jobsfeedback: Optional[Any],
     ) -> "JobDetail":
         newobject = {
-            "id": str(jobs_object.id),
-            "userid": str(jobs_object.userid),
+            "id": jobs_object.id.hex,
+            "userid": jobs_object.userid.hex,
             "status": jobs_object.status,
             "created": jobs_object.created,
             "updated": jobs_object.updated,
@@ -146,7 +146,7 @@ def validate_websocket_message(v: str) -> str:
 class WebSocketMessage(BaseModel):
     """things that the client is going to send us across the websocket"""
 
-    userid: Annotated[str, AfterValidator(validate_userid)]
+    userid: Annotated[UUID, AfterValidator(validate_userid)]
     payload: Optional[str] = None
     message: Annotated[str, AfterValidator(validate_websocket_message)]
 
@@ -163,21 +163,22 @@ class WebSocketResponse(BaseModel):
 
 
 class LogMessages(StrEnum):
-    UserUpdate = "user update"
-    NewJob = "new job"
-    JobDeleted = "job deleted"
-    DeleteNotFound = "delete but not found"
-    JobMetadata = "job metadata"
-    JobCompleted = "job completed"
-    JobStarted = "starting job"
     BackgroundPollerShutdown = "Background poller is stopping"
-    PendingJobs = "pending jobs"
-    Resubmitted = "resubmitted"
-    RejectedResubmit = "rejected resubmit due to job status"
-    FailedResubmit = "failed resubmit handling"
-    NoJobs = "no jobs found"
-    WebsocketError = "websocket error"
-    JobHistory = "job history"
-    CompletionOutput = "completion output"
+    DeleteNotFound = "delete but not found"
+    JobCompleted = "job completed"
+    JobCompletionOutput = "completion output"
+    JobDeleted = "job deleted"
     JobFeedback = "job feedback"
-    NewSession = "new session"
+    JobHistory = "job history"
+    JobMetadata = "job metadata"
+    JobNew = "new job"
+    JobStarted = "starting job"
+    NoJobs = "no jobs found"
+    PendingJobs = "pending jobs"
+    RejectedResubmit = "rejected resubmit due to job status"
+    ResubmitFailed = "failed resubmit handling"
+    Resubmitted = "resubmitted"
+    SessionNew = "new session"
+    SessionUpdate = "session updated"
+    UserUpdate = "user update"
+    WebsocketError = "websocket error"
