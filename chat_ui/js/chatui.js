@@ -317,8 +317,8 @@ createApp({
             // it's OK to drop this if we don't have it going already, we'll try again soon
             if (this.ws.readyState === WebSocket.OPEN) {
                 this.ws.send(JSON.stringify(payload));
-                // always look back 30 seconds
-                const now = (new Date().getTime() / 1000) - 30;
+                // always look back 180 seconds because we might as well
+                const now = (new Date().getTime() / 1000) - 180;
                 this.lastJobsCheck = now;
             }
         },
