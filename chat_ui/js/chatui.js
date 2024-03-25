@@ -308,7 +308,8 @@ createApp({
 
             const payload = {
                 "userid": this.userid, "message": "jobs", "payload": JSON.stringify({
-                    "since": this.lastJobsCheck,
+                    // since we're filtering on sessionid, just ask for everything
+                    // "since": this.lastJobsCheck,
                     "sessionid": this.currentSessionid,
                 })
             };
@@ -318,7 +319,7 @@ createApp({
             if (this.ws.readyState === WebSocket.OPEN) {
                 this.ws.send(JSON.stringify(payload));
                 // always look back 180 seconds because we might as well
-                const now = (new Date().getTime() / 1000) - 180;
+                const now = new Date().getTime() / 1000;
                 this.lastJobsCheck = now;
             }
         },
