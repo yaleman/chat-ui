@@ -44,6 +44,14 @@
               <span class="navbar-toggler-icon"></span>
             </button>
 
+            <form class="d-flex" style="width:50%">
+              <span class="navbar-text">Session name:&nbsp;</span>
+              <input type="text"
+                name="sessionName" class="form-control"
+                v-model.trim="currentSessionName" style="width:50%" />
+
+            </form>
+
             <ul class="nav justify-content-end">
               <li class="nav-item px-1">
                 <button type="button" class="btn btn-light"
@@ -207,7 +215,8 @@
 
                   <div class="row py-4">
                     <div class="col-12 px-2">
-                      <button type="submit" class="btn btn-primary">Send
+                      <button type="submit" class="btn btn-primary"
+                        :class="feedbackButtonClass">Send
                         Results</button>
                     </div>
                   </div>
@@ -345,7 +354,8 @@
                         You: {{job.prompt}}
                       </span>
                       <button type="button" v-if="job.response"
-                        class=" btn btn-secondary float-end"
+                        class=" btn float-end"
+                        :class="feedbackButtonClassFunc(job.id)"
                         @click="showPromptDetail(job.id)">Feedback</button>
                     </div>
                     <ul class="list-group list-group-flush">

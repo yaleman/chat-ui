@@ -1,30 +1,43 @@
 from datetime import datetime, UTC
 from enum import IntEnum
 
+from sqlalchemy_utils import UUIDType  # type: ignore
+
 from typing import Any, Optional
 
 from uuid import UUID, uuid4
 
 import sqlmodel
+from sqlmodel._compat import SQLModelConfig
+
+
 from sqlalchemy.exc import NoResultFound
 from chat_ui.models import JobStatus
+
+sqlmodel.SQLModel.__table_args__ = {"extend_existing": True}
 
 
 class Users(sqlmodel.SQLModel, table=True):
     """database representation of a user"""
 
-    userid: UUID = sqlmodel.Field(primary_key=True)
+    userid: UUID = sqlmodel.Field(primary_key=True, sa_type=UUIDType(binary=False))
     name: str
     created: datetime = datetime.now(UTC)
     updated: Optional[datetime] = None
+
+    model_config = SQLModelConfig(arbitrary_types_allowed=True)
 
 
 class Jobs(sqlmodel.SQLModel, table=True):
     """database representation of a job"""
 
-    id: UUID = sqlmodel.Field(primary_key=True, default_factory=uuid4)
+    id: UUIDType = sqlmodel.Field(
+        primary_key=True, default_factory=uuid4, sa_type=UUIDType(binary=False)
+    )
     client_ip: str
-    userid: UUID = sqlmodel.Field(foreign_key="users.userid", index=True)
+    userid: UUID = sqlmodel.Field(
+        foreign_key="users.userid", index=True, sa_type=UUIDType(binary=False)
+    )
     status: str = sqlmodel.Field(JobStatus.Created.value)
     created: datetime = sqlmodel.Field(datetime.now(UTC))
     updated: Optional[datetime] = None
@@ -34,7 +47,10 @@ class Jobs(sqlmodel.SQLModel, table=True):
     runtime: Optional[float] = None
     job_metadata: Optional[str] = None
 
-    sessionid: UUID = sqlmodel.Field(foreign_key="session.sessionid")
+    sessionid: UUID = sqlmodel.Field(
+        foreign_key="session.sessionid", sa_type=UUIDType(binary=False)
+    )
+    model_config = SQLModelConfig(arbitrary_types_allowed=True)
 
     @classmethod
     def from_backgroundjob(cls, backgroundjob: "BackgroundJob") -> "Jobs":  # type: ignore # noqa: F821
@@ -51,6 +67,7 @@ class Jobs(sqlmodel.SQLModel, table=True):
             request_type=backgroundjob.request_type,
             runtime=backgroundjob.runtime,
             job_metadata=backgroundjob.job_metadata,
+            sessionid=backgroundjob.sessionid,
         )
 
     @classmethod
@@ -85,15 +102,18 @@ def validate_feedback_success(v: int) -> int:
 class JobFeedback(sqlmodel.SQLModel, table=True):
     """database representation of feedback"""
 
-    id: UUID = sqlmodel.Field(primary_key=True, default_factory=uuid4)
+    id: UUID = sqlmodel.Field(
+        primary_key=True, default_factory=uuid4, sa_type=UUIDType(binary=False)
+    )
     jobid: UUID = sqlmodel.Field(foreign_key="jobs.id")
     success: int  # See FeedbackSuccess for the values, but it's 1, 0, -1
     comment: str
     src_ip: str
     created: datetime = sqlmodel.Field(datetime.now(UTC))
+    model_config = SQLModelConfig(arbitrary_types_allowed=True)
 
     @classmethod
-    def has_feedback(cls, session: sqlmodel.Session, jobid: str) -> bool:
+    def has_feedback(cls, session: sqlmodel.Session, jobid: UUID) -> bool:
         try:
             query = sqlmodel.select(JobFeedback).where(JobFeedback.jobid == jobid)
             session.exec(query).one()
@@ -103,7 +123,7 @@ class JobFeedback(sqlmodel.SQLModel, table=True):
 
     @classmethod
     def get_feedback(
-        cls, session: sqlmodel.Session, jobid: str
+        cls, session: sqlmodel.Session, jobid: UUID
     ) -> Optional["JobFeedback"]:
         try:
             query = sqlmodel.select(JobFeedback).where(JobFeedback.jobid == jobid)
@@ -117,9 +137,7 @@ class ChatUiDBSession(sqlmodel.SQLModel, table=True):
 
     __tablename__ = "session"
 
-    sessionid: str = sqlmodel.Field(
-        primary_key=True, default_factory=lambda: str(uuid4())
-    )
+    sessionid: UUID = sqlmodel.Field(primary_key=True, default_factory=lambda: uuid4())
     name: str = sqlmodel.Field(default_factory=lambda: datetime.now(UTC).isoformat())
 
     userid: UUID = sqlmodel.Field(foreign_key="users.userid")

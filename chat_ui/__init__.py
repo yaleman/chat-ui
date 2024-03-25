@@ -100,7 +100,7 @@ def migrate_database(engine: sqlalchemy.engine.Engine) -> None:
         for user in users:
             sessionid = uuid4()
             logger.info("fixing jobs for user", userid=user[0], sessionid=sessionid)
-            session.add(ChatUiDBSession(userid=user[0], sessionid=str(sessionid)))
+            session.add(ChatUiDBSession(userid=user[0], sessionid=sessionid))
             session.commit()
             numjobs = session.scalar(
                 sqlmodel.text(
@@ -110,7 +110,7 @@ def migrate_database(engine: sqlalchemy.engine.Engine) -> None:
             session.exec(  # type: ignore
                 sqlmodel.text(
                     "UPDATE jobs set sessionid=:sessionid where sessionid is NULL and userid=:userid"
-                ).bindparams(sessionid=str(sessionid), userid=user[0])
+                ).bindparams(sessionid=sessionid.hex, userid=user[0])
             )
             logger.info(
                 "set sessionids", userid=user[0], count=numjobs, sessionid=sessionid
@@ -231,7 +231,7 @@ async def post_user(
         create_session(newuser.userid, session)
 
     res = UserDetail(
-        userid=str(newuser.userid),
+        userid=newuser.userid,
         name=newuser.name,
         created=newuser.created,
         updated=newuser.updated,
@@ -253,21 +253,21 @@ async def create_job(
 
     newjob = Jobs.from_newjobform(job, client_ip=client_ip)
 
-    logger.info(
-        LogMessages.NewJob,
-        src_ip=get_client_ip(request),
-        **newjob.model_dump(round_trip=False, warnings=False),
-    )
     session.add(newjob)
     session.commit()
     session.refresh(newjob)
+    logger.info(
+        LogMessages.JobNew,
+        src_ip=get_client_ip(request),
+        **newjob.model_dump(round_trip=False, warnings=False),
+    )
     return Job.from_jobs(newjob, None)
 
 
 @app.get("/jobs")
 async def jobs(
     userid: UUID,
-    sessionid: str | None = None,
+    sessionid: UUID | None = None,
     since: float | None = None,
     session: Session = Depends(get_session),
 ) -> List[Job]:
@@ -296,8 +296,8 @@ async def jobs(
 
 @app.get("/jobs/{userid}/{job_id}")
 async def job_detail(
-    userid: str,
-    job_id: str,
+    userid: UUID,
+    job_id: UUID,
     session: Session = Depends(get_session),
 ) -> JobDetail:
     try:
@@ -392,7 +392,7 @@ async def healthcheck() -> str:
 
 def user_has_sessions(userid: UUID, session: Session) -> bool:
     query = select(func.count(ChatUiDBSession.sessionid)).where(  # type: ignore
-        ChatUiDBSession.userid == str(userid)
+        ChatUiDBSession.userid == userid
     )
     try:
         res = session.scalar(query)
@@ -409,7 +409,7 @@ def create_session(userid: UUID, session: Session) -> ChatUiDBSession:
     session.add(new_session)
     session.commit()
     session.refresh(new_session)
-    logger.info(LogMessages.NewSession, **new_session.model_dump(mode="json"))
+    logger.info(LogMessages.SessionNew, **new_session.model_dump(mode="json"))
     return new_session
 
 
@@ -419,7 +419,7 @@ async def session_new(
 ) -> ChatUiDBSession:
     # check the userid exists
     try:
-        if session.exec(select(Users).where(Users.userid == str(userid))).one() is None:
+        if session.exec(select(Users).where(Users.userid == userid)).one() is None:
             raise HTTPException(status_code=404, detail="User not found")
     except NoResultFound:
         raise HTTPException(status_code=404, detail="User not found")
@@ -427,7 +427,7 @@ async def session_new(
     # create the new entry in the db
     new_session = create_session(userid, session)
 
-    logger.info(LogMessages.NewSession, **new_session.model_dump(mode="json"))
+    logger.info(LogMessages.SessionNew, **new_session.model_dump(mode="json"))
     return new_session
 
 
@@ -442,8 +442,8 @@ async def session_update(
     try:
         chatsession = session.exec(
             select(ChatUiDBSession).where(
-                ChatUiDBSession.userid == str(userid),
-                ChatUiDBSession.sessionid == str(sessionid),
+                ChatUiDBSession.userid == userid,
+                ChatUiDBSession.sessionid == sessionid,
             )
         ).one()
 
@@ -455,6 +455,12 @@ async def session_update(
     session.add(chatsession)
     session.commit()
     session.refresh(chatsession)
+    logger.info(
+        LogMessages.SessionUpdate,
+        userid=userid,
+        sessionid=sessionid,
+        session_name=chatsession.name,
+    )
     return chatsession
 
 
@@ -463,7 +469,7 @@ async def get_user_sessions(
     userid: UUID, create: bool = True, session: Session = Depends(get_session)
 ) -> Sequence[ChatUiDBSession]:
     try:
-        if session.exec(select(Users).where(Users.userid == str(userid))).one() is None:
+        if session.exec(select(Users).where(Users.userid == userid)).one() is None:
             logger.info("User not found when asking for sessions", userid=userid)
             raise HTTPException(status_code=404, detail="User not found")
     except NoResultFound:
@@ -473,7 +479,7 @@ async def get_user_sessions(
     try:
         query = (
             select(ChatUiDBSession)
-            .where(ChatUiDBSession.userid == str(userid))
+            .where(ChatUiDBSession.userid == userid)
             .order_by(ChatUiDBSession.created.desc())  # type: ignore
             # because desc isn't a method of datetime but it works in sqlalchemy
         )

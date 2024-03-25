@@ -10,7 +10,8 @@ from chat_ui.forms import NewJobForm
 from chat_ui.models import RequestType, WebSocketMessage, WebSocketMessageType
 
 from . import get_test_session  # noqa: E402,F401
-from chat_ui import app, get_session, websocket_jobs
+from chat_ui import app, get_session
+from chat_ui.websocket_handlers import websocket_jobs
 
 
 @pytest.mark.asyncio()
@@ -27,7 +28,7 @@ async def test_websocket_jobs(session: sqlmodel.Session) -> None:
     name = "testuser"
 
     # create a user
-    res = client.post("/user", json={"userid": str(userid), "name": name})
+    res = client.post("/user", json={"userid": userid.hex, "name": name})
     assert res.status_code == 200
 
     # create a session
@@ -36,9 +37,9 @@ async def test_websocket_jobs(session: sqlmodel.Session) -> None:
     sessionid = ChatUiDBSession.model_validate(res.json()).sessionid
 
     data = WebSocketMessage(
-        userid=str(userid),
+        userid=userid,
         message=WebSocketMessageType.Jobs,
-        payload=json.dumps({"since": 0}),
+        payload=json.dumps({"sessionid": sessionid.hex, "since": 0}),
     )
     jobs = await websocket_jobs(data, session, None)  # type: ignore
     assert jobs.message == WebSocketMessageType.Jobs
@@ -64,9 +65,11 @@ async def test_websocket_jobs(session: sqlmodel.Session) -> None:
 
     # check for a super-recent time which nothing's been
     data = WebSocketMessage(
-        userid=str(userid),
+        userid=userid,
         message=WebSocketMessageType.Jobs,
-        payload=json.dumps({"since": datetime.now(UTC).timestamp()}),
+        payload=json.dumps(
+            {"sessionid": sessionid.hex, "since": datetime.now(UTC).timestamp()}
+        ),
     )
 
     jobs = await websocket_jobs(data, session, None)  # type: ignore

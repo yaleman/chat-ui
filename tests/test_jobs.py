@@ -1,5 +1,5 @@
 from datetime import UTC, datetime
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from fastapi.testclient import TestClient
 import sqlmodel
@@ -24,7 +24,7 @@ def test_jobs(session: sqlmodel.Session) -> None:
     userid = uuid4()
     name = "testuser"
 
-    res = client.post("/user", json={"userid": str(userid), "name": name})
+    res = client.post("/user", json={"userid": userid.hex, "name": name})
     assert res.status_code == 200
 
     res = client.post(f"/session/new/{userid}")
@@ -65,7 +65,7 @@ def test_jobs(session: sqlmodel.Session) -> None:
     res = client.get(f"/jobs?userid={userid}")
     assert res.status_code == 200
     assert len(res.json()) == 1
-    assert res.json()[0]["sessionid"] == sessionid
+    assert UUID(res.json()[0]["sessionid"]) == sessionid
 
     res = client.get(f"/jobs?userid={userid}&since=0")
     assert res.status_code == 200

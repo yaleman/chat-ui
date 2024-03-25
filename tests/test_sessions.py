@@ -1,4 +1,4 @@
-from uuid import UUID, uuid4
+from uuid import uuid4
 
 from fastapi.testclient import TestClient
 import sqlmodel
@@ -29,10 +29,10 @@ def test_db_session(session: sqlmodel.Session) -> None:
     app.dependency_overrides[get_session] = get_session_override
 
     client = TestClient(app)
-    userid = str(uuid4())
+    userid = uuid4()
     name = "testuser"
 
-    res = client.post("/user", json={"userid": userid, "name": name})
+    res = client.post("/user", json={"userid": userid.hex, "name": name})
     assert res.status_code == 200
 
     res = client.post(f"/session/new/{userid}")
@@ -40,12 +40,12 @@ def test_db_session(session: sqlmodel.Session) -> None:
     assert res.status_code == 200
     parse_res: ChatUiDBSession = ChatUiDBSession.model_validate(res.json())
 
-    assert parse_res.userid == UUID(userid)
+    assert parse_res.userid == userid
     assert parse_res.sessionid is not None
     assert parse_res.created is not None
 
 
-def test_sesion_errors(session: sqlmodel.Session) -> None:
+def test_session_errors(session: sqlmodel.Session) -> None:
     """test the jobfeedback model"""
 
     def get_session_override() -> sqlmodel.Session:
@@ -92,9 +92,9 @@ def test_update_session(session: sqlmodel.Session) -> None:
 
     app.dependency_overrides[get_session] = get_session_override
     client = TestClient(app)
-    userid = str(uuid4())
+    userid = uuid4()
 
-    res = client.post("/user", json={"userid": userid, "name": "testuser"})
+    res = client.post("/user", json={"userid": userid.hex, "name": "testuser"})
     assert res.status_code == 200
 
     res = client.post(f"/session/new/{userid}")
@@ -106,7 +106,6 @@ def test_update_session(session: sqlmodel.Session) -> None:
         f"/session/{userid}/{chatsession.sessionid}",
         json=SessionUpdateForm(name="hello world").model_dump(),
     )
-
     assert res.status_code == 200
 
     assert res.json().get("name") == "hello world"
