@@ -182,3 +182,4 @@ class LogMessages(StrEnum):
     SessionUpdate = "session updated"
     UserUpdate = "user update"
     WebsocketError = "websocket error"
+    WebsocketDisconnected = "websocket disconnected"

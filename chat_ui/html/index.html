@@ -49,10 +49,13 @@
               <input type="text"
                 name="sessionName" class="form-control"
                 v-model.trim="currentSessionName" style="width:50%" />
-
             </form>
 
             <ul class="nav justify-content-end">
+              <li class="nav-item px-1" v-if="waitingJobs > 0">
+                <button type="button" disabled class="btn btn-light">Jobs in
+                  queue: {{waitingJobs}}</button>
+              </li>
               <li class="nav-item px-1">
                 <button type="button" class="btn btn-light"
                   @click="showSessionModal()"
