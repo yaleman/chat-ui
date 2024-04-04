@@ -289,5 +289,6 @@ class BackgroundPoller(threading.Thread):
 
                 except NoResultFound:
                     logger.debug(LogMessages.NoJobs)
-                    time.sleep(1)
+                    # don't just infinispin
+                    time.sleep(0.01)
         logger.info(LogMessages.BackgroundPollerShutdown)

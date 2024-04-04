@@ -2,7 +2,7 @@ from enum import StrEnum
 import json
 import os
 import sys
-from typing import Optional
+from typing import Any, Dict, Optional
 from uuid import UUID
 import click
 import requests
@@ -26,6 +26,21 @@ def make_url(hostname: str, port: int | str, skip_tls: bool) -> str:
 @click.group()
 def cli() -> None:
     pass
+
+
+def create_or_update_user(
+    base_url: str, userid: UUID, name: Optional[str] = None
+) -> None:
+    """create or update a user"""
+    print(f"Creating or updating {userid=} {name=}", file=sys.stderr)
+    payload = UserForm(userid=userid, name=name)
+    res = requests.post(f"{base_url}/user", json=payload.model_dump(mode="json"))
+    if res.status_code != 200:
+        print(f"Failed to update user: {res.text}", file=sys.stderr)
+        sys.exit(1)
+    else:
+        print("Successfully pushed user!", file=sys.stderr)
+        return res.json()
 
 
 @cli.command()
@@ -60,21 +75,53 @@ def user(
     if name is None:
         click.echo("You must provide a name to push a user")
         return
-    click.echo(f"Creating or updating userid {userid}")
-    payload = UserForm(userid=userid, name=name)
-    res = requests.post(f"{base_url}/user", json=payload.model_dump(mode="json"))
-    if res.status_code != 200:
-        click.echo(f"Failed to update user: {res.text}")
-        sys.exit(1)
-    else:
-        print("Successfully updated user!")
-        print(json.dumps(res.json(), indent=4))
+    res = create_or_update_user(base_url, UUID(userid), UUID(name))
+    print(json.dumps(res, indent=4))
 
 
 class SessionCommands(StrEnum):
     New = "new"
     GetSessions = "get"
     Update = "update"
+
+
+def foo(help: int) -> None:
+    print(help)
+
+
+def create_session(base_url: str, userid: UUID) -> Dict[str, Any]:
+    """create a session"""
+    res = requests.post(f"{base_url}/session/new/{userid}")
+    if res.status_code != 200:
+        print(f"Failed to create new session: {res.text}", file=sys.stderr)
+        sys.exit(1)
+    else:
+        if len(res.json()) == 0:
+            print("No sessions found", file=sys.stderr)
+            sys.exit(1)
+        else:
+            print("Got a new session!", file=sys.stderr)
+            print(json.dumps(res.json(), indent=4))
+            return res.json()
+
+
+def update_session(
+    base_url: str, name: str, sessionid: UUID, userid: UUID
+) -> Dict[str, Any]:
+    """update a session"""
+
+    payload = SessionUpdateForm(name=name)
+    res = requests.post(
+        f"{base_url}/session/{userid}/{sessionid}",
+        json=payload.model_dump(mode="json"),
+    )
+    if res.status_code != 200:
+        click.echo(f"Failed to update session: {res.text}")
+        sys.exit(1)
+    else:
+        print("Successfully updated session!")
+        print(json.dumps(res.json(), indent=4))
+        return res.json()
 
 
 @cli.command()
@@ -117,17 +164,7 @@ def session(
     click.echo(f"Connecting to {base_url} with userid {userid}, {command=}", err=True)
 
     if command == SessionCommands.New:
-        res = requests.post(f"{base_url}/session/new/{userid}")
-        if res.status_code != 200:
-            click.echo(f"Failed to create new session: {res.text}")
-            sys.exit(1)
-        else:
-            if len(res.json()) == 0:
-                print("No sessions found", file=sys.stderr)
-                sys.exit(1)
-            else:
-                print("Got a new session!", file=sys.stderr)
-                print(json.dumps(res.json(), indent=4))
+        create_session(base_url, userid)
     elif command == SessionCommands.GetSessions:
         res = requests.get(f"{base_url}/sessions/{userid}", params={"create": False})
         if res.status_code != 200:
@@ -147,22 +184,24 @@ def session(
         if sessionid is None:
             click.echo("You must provide a sessionid to update a session", err=True)
             sys.exit(1)
-        payload = SessionUpdateForm(name=name)
-        res = requests.post(
-            f"{base_url}/session/{userid}/{sessionid}",
-            json=payload.model_dump(mode="json"),
-        )
-        if res.status_code != 200:
-            click.echo(f"Failed to update session: {res.text}")
-            sys.exit(1)
-        else:
-            print("Successfully updated session!")
-            print(json.dumps(res.json(), indent=4))
+
+        update_session(base_url, sessionid, name, userid)
 
 
 class JobCommands(StrEnum):
     Get = "get"
     Create = "create"
+
+
+def create_job(base_url: str, payload: NewJobForm) -> Dict[str, Any]:
+    """push a job"""
+    res = requests.post(f"{base_url}/job", json=payload.model_dump(mode="json"))
+    if res.status_code != 200:
+        print(f"Failed to create job: {res.text}", file=sys.stderr)
+        sys.exit(1)
+    else:
+        print("Successfully created job!")
+        return res.json()
 
 
 @cli.command()
@@ -230,13 +269,8 @@ def job(
             userid=userid,
             request_type=RequestType.Plain,
         )
-        res = requests.post(f"{base_url}/job", json=payload.model_dump(mode="json"))
-        if res.status_code != 200:
-            click.echo(f"Failed to create job: {res.text}")
-            sys.exit(1)
-        else:
-            print("Successfully created job!")
-            print(json.dumps(res.json(), indent=4))
+        res = create_job(base_url, payload)
+        print(json.dumps(res, indent=4))
 
 
 if __name__ == "__main__":

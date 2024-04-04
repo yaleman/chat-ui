@@ -329,24 +329,25 @@ async def websocket_endpoint(
     try:
         while websocket.client_state == WebSocketState.CONNECTED:
             try:
-                raw_msg = ""
-                raw_msg = await websocket.receive_text()
+                raw_msg = "<empty>"
+                raw_msg = await websocket.receive_json()
                 response = WebSocketResponse(
                     message=WebSocketMessageType.Error.value, payload="unknown message"
                 )
-                data = WebSocketMessage.model_validate_json(raw_msg)
+                data = WebSocketMessage.model_validate(raw_msg)
+            except WebSocketDisconnect:
+                logger.debug(
+                    LogMessages.WebsocketDisconnected, src_ip=get_client_ip(websocket)
+                )
+                return
             except Exception as error:
+
                 logger.error(
                     LogMessages.WebsocketError.value,
                     error=error,
                     src_ip=get_client_ip(websocket),
                     raw_msg=raw_msg,
                 )
-                # response = WebSocketResponse(
-                #     message=WebSocketMessageType.Error.value, payload=str(error)
-                # )
-                # await websocket.send_text(response.as_message())
-                # await websocket.close()
                 return
 
             if data.message == WebSocketMessageType.Jobs.value:
@@ -360,10 +361,9 @@ async def websocket_endpoint(
             elif data.message == WebSocketMessageType.Feedback.value:
                 response = await websocket_feedback(data, session, websocket)
             await websocket.send_text(response.as_message())
-    except WebSocketDisconnect as disconn:
-        logger.debug(
-            f"Websocket disconnected: {disconn}", src_ip=get_client_ip(websocket)
-        )
+    except WebSocketDisconnect:
+        logger.debug(LogMessages.WebsocketDisconnected, src_ip=get_client_ip(websocket))
+        return
     except RuntimeError as error:
         if (
             "Unexpected ASGI message 'websocket.send', after sending 'websocket.close'"
@@ -380,7 +380,7 @@ async def websocket_endpoint(
             )
         return
     except Exception as error:
-        logger.error(error)
+        logger.error(LogMessages.WebsocketError, error=error)
         return
 
 
