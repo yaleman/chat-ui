@@ -26,3 +26,18 @@ The quoted terms/phrases should be in the "message" field of the log emitted whe
   - "job metadata" - metadata - includes token use
 
 There's also the `status` field in jobs which is logged, showing where they are in the processing pipeline.
+
+```mermaid
+graph TD;
+  User -->|userid| Session
+
+  Session -->|sessionid| Job
+  User -->|userid| Job
+
+  Job -->|jobid| Feedback
+  User -->|userid| Metadata
+
+
+  Job -->|jobid| Metadata
+  User -->|userid| Feedback
+```
