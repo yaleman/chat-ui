@@ -58,7 +58,7 @@ llama:
 .PHONY: checks
 checks: ## Run linting etc
 checks:
-	poetry run mypy --strict tests chat_ui
-	poetry run ruff tests chat_ui
-	eslint chat_ui/js/*.js
 	poetry run pytest
+	poetry run ruff tests chat_ui
+	poetry run mypy --strict tests chat_ui
+	eslint chat_ui/js/*.js
