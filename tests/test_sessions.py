@@ -5,6 +5,7 @@ import sqlmodel
 
 from chat_ui import app, create_session, get_session
 from chat_ui.db import ChatUiDBSession
+from chat_ui.enums import Urls
 from chat_ui.forms import SessionUpdateForm, UserForm
 
 from . import get_test_session  # noqa: E402,F401
@@ -32,7 +33,7 @@ def test_db_session(session: sqlmodel.Session) -> None:
     userid = uuid4()
     name = "testuser"
 
-    res = client.post("/user", json={"userid": userid.hex, "name": name})
+    res = client.post(Urls.User, json={"userid": userid.hex, "name": name})
     assert res.status_code == 200
 
     res = client.post(f"/session/new/{userid}")
@@ -72,16 +73,20 @@ def test_db_get_sessions(session: sqlmodel.Session) -> None:
     userid = uuid4()
 
     res = client.post(
-        "/user", json=UserForm(userid=userid, name="testuser").model_dump(mode="json")
+        Urls.User, json=UserForm(userid=userid, name="testuser").model_dump(mode="json")
     )
     assert res.status_code == 200
     create_session(userid, session)
     create_session(userid, session)
 
-    res = client.get(f"/sessions/{userid}")
+    res = client.get(f"{Urls.Sessions}/{userid}")
     assert res.status_code == 200
     parse_res = [ChatUiDBSession.model_validate(x) for x in res.json()]
     assert len(parse_res) == 3
+
+    # tests a missing one
+    res = client.get(f"{Urls.Sessions}/{uuid4()}")
+    assert res.status_code == 404
 
 
 def test_update_session(session: sqlmodel.Session) -> None:
@@ -94,7 +99,7 @@ def test_update_session(session: sqlmodel.Session) -> None:
     client = TestClient(app)
     userid = uuid4()
 
-    res = client.post("/user", json={"userid": userid.hex, "name": "testuser"})
+    res = client.post(Urls.User, json={"userid": userid.hex, "name": "testuser"})
     assert res.status_code == 200
 
     res = client.post(f"/session/new/{userid}")
@@ -109,3 +114,9 @@ def test_update_session(session: sqlmodel.Session) -> None:
     assert res.status_code == 200
 
     assert res.json().get("name") == "hello world"
+
+    res = client.post(
+        f"/session/{userid}/{uuid4()}",
+        json=SessionUpdateForm(name="hello world").model_dump(),
+    )
+    assert res.status_code == 404

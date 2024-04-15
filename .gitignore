@@ -10,3 +10,5 @@ build/
 history.json
 node_modules/
 .envrc
+htmlcov/
+.coverage

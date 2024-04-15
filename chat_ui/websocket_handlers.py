@@ -245,8 +245,10 @@ async def websocket_jobs(
     # serialize the jobs out so the websocket reader can parse them
     try:
         payload = WebSocketJobsMessage.model_validate_json(data.payload or "")
-        logger.debug("Getting jobs since {}", payload.since, **payload.model_dump())
-        payload_timestamp = datetime.fromtimestamp(payload.since or 0.0, UTC)
+        lookback = payload.since or 0.0
+
+        logger.debug("Getting jobs since {}", lookback, **payload.model_dump())
+        payload_timestamp = datetime.fromtimestamp(lookback, UTC)
         jobs = session.exec(
             select(Jobs).where(
                 Jobs.userid == data.userid,

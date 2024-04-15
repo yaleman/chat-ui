@@ -5,6 +5,7 @@ from fastapi.testclient import TestClient
 import pytest
 import sqlmodel
 from chat_ui.db import ChatUiDBSession
+from chat_ui.enums import Urls
 from chat_ui.forms import NewJobForm
 
 from chat_ui.models import RequestType, WebSocketMessage, WebSocketMessageType
@@ -28,7 +29,7 @@ async def test_websocket_jobs(session: sqlmodel.Session) -> None:
     name = "testuser"
 
     # create a user
-    res = client.post("/user", json={"userid": userid.hex, "name": name})
+    res = client.post(Urls.User, json={"userid": userid.hex, "name": name})
     assert res.status_code == 200
 
     # create a session
@@ -47,7 +48,7 @@ async def test_websocket_jobs(session: sqlmodel.Session) -> None:
     assert len(jobs.payload) == 0
 
     res = client.post(
-        "/job",
+        Urls.Job,
         json=NewJobForm(
             userid=userid,
             sessionid=sessionid,
