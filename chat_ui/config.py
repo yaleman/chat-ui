@@ -67,6 +67,8 @@ class Config(BaseSettings):
 
     model_config = SettingsConfigDict(env_prefix="CHATUI_")
 
+    admin_password: Optional[str] = None
+
     @classmethod
     def settings_customise_sources(
         cls,

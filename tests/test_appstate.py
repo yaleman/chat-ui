@@ -8,6 +8,8 @@ from uuid import uuid4
 from fastapi.testclient import TestClient
 import sqlmodel
 import os
+
+from chat_ui.enums import Urls
 from . import get_test_session  # noqa: E402,F401
 
 from chat_ui.forms import UserDetail, UserForm
@@ -40,7 +42,7 @@ def test_post_user(session: sqlmodel.Session) -> None:
     second_username = "Cheesemonkey"
     userid = uuid4()
     response = client.post(
-        "/user",
+        Urls.User,
         json=UserForm(userid=userid, name=first_username).model_dump(mode="json"),
     )
     assert response.status_code == 200
@@ -49,7 +51,7 @@ def test_post_user(session: sqlmodel.Session) -> None:
 
     # do a second post to update the record.
     response = client.post(
-        "/user",
+        Urls.User,
         json=UserForm(userid=userid, name=second_username).model_dump(mode="json"),
     )
     assert response.status_code == 200

@@ -62,3 +62,8 @@ checks:
 	poetry run ruff tests chat_ui
 	poetry run mypy --strict tests chat_ui
 	eslint chat_ui/js/*.js
+
+.PHONY: coverage
+coverage: ## Run tests with coverage
+coverage:
+	poetry run pytest --cov-report html --cov=chat_ui tests

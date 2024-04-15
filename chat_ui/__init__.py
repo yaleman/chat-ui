@@ -10,12 +10,13 @@ from pathlib import Path
 import sys
 
 
-from typing import Any, AsyncGenerator, Generator, List, Sequence
+from typing import Annotated, Any, AsyncGenerator, Generator, List, Optional, Sequence
 from uuid import UUID, uuid4
 from fastapi import (
     Depends,
     FastAPI,
     HTTPException,
+    Header,
     Request,
     WebSocket,
     WebSocketDisconnect,
@@ -36,6 +37,7 @@ import sqlalchemy.engine
 from starlette.middleware.gzip import GZipMiddleware
 from starlette.middleware.sessions import SessionMiddleware
 from chat_ui.backgroundpoller import BackgroundPoller
+from chat_ui.enums import Urls
 from chat_ui.websocket_handlers import (
     websocket_delete,
     websocket_feedback,
@@ -45,11 +47,12 @@ from chat_ui.websocket_handlers import (
 )
 
 from .config import Config
-from .db import ChatUiDBSession, JobFeedback, Jobs, Users
+from .db import ChatUiDBSession, JobAnalysis, JobFeedback, Jobs, Users
 from .logs import sink
 
 from .forms import SessionUpdateForm, NewJobForm, UserDetail, UserForm
 from chat_ui.models import (
+    AnalyzeForm,
     Job,
     JobDetail,
     JobStatus,
@@ -118,7 +121,7 @@ def migrate_database(engine: sqlalchemy.engine.Engine) -> None:
         session.commit()
 
 
-def startup_check_outstanding_jobs() -> None:
+def startup_check_outstanding_jobs(engine: sqlalchemy.engine.Engine) -> None:
     logger.info(
         "Checking for outstanding jobs on startup and setting them to error status"
     )
@@ -145,7 +148,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[Any, Any]:
         # create all the tables
         sqlmodel.SQLModel.metadata.create_all(engine)
         migrate_database(engine)
-        startup_check_outstanding_jobs()
+        startup_check_outstanding_jobs(engine)
 
         t = BackgroundPoller(engine)
         t.start()
@@ -203,7 +206,7 @@ async def js(filename: str) -> FileResponse:
     return await staticfile(filename, "js/")
 
 
-@app.post("/user")
+@app.post(Urls.User)
 async def post_user(
     request: Request,
     form: UserForm,
@@ -264,7 +267,7 @@ async def create_job(
     return Job.from_jobs(newjob, None)
 
 
-@app.get("/jobs")
+@app.get(Urls.Jobs)
 async def jobs(
     userid: UUID,
     sessionid: UUID | None = None,
@@ -302,12 +305,14 @@ async def job_detail(
 ) -> JobDetail:
     try:
         query = select(Jobs).where(Jobs.userid == userid, Jobs.id == job_id)
-        job = session.exec(query).first()
+        job = session.exec(query).one()
         # convert the output into HTML
         # technically this'll be caught as an exception, but it doesn't hurt to be explicit
         if job is not None:
             if job.response is not None:
                 job.response = html_from_response(job.response)
+        else:
+            raise HTTPException(404)
         session.reset()
         feedback = JobFeedback.get_feedback(session, job_id)
         return JobDetail.from_jobs(job, feedback)
@@ -384,23 +389,44 @@ async def websocket_endpoint(
         return
 
 
-@app.get("/healthcheck")
+@app.get(Urls.HealthCheck)
 async def healthcheck() -> str:
     """healthcheck endpoint"""
     return "OK"
+
+
+@app.post(Urls.Analyse)
+async def analyze(
+    analyze_form: AnalyzeForm,
+    session: Session = Depends(get_session),
+) -> JobAnalysis:
+    """analyse a prompt"""
+
+    # check we have a userid and jobid matching the query
+    query = select(Jobs).where(
+        Jobs.userid == analyze_form.userid, Jobs.id == analyze_form.jobid
+    )
+    try:
+        session.exec(query).one()
+    except NoResultFound:
+        raise HTTPException(status_code=404, detail="User or jobid not found")
+
+    # create the analysis request
+    job_analysis: JobAnalysis = JobAnalysis.from_analyzeform(analyze_form)
+    session.add(job_analysis)
+    session.commit()
+    session.refresh(job_analysis)
+    return job_analysis
 
 
 def user_has_sessions(userid: UUID, session: Session) -> bool:
     query = select(func.count(ChatUiDBSession.sessionid)).where(  # type: ignore
         ChatUiDBSession.userid == userid
     )
-    try:
-        res = session.scalar(query)
-        if res is None:
-            return False
-        return res > 0
-    except NoResultFound:
+    res = session.scalar(query)
+    if res is None:
         return False
+    return res > 0
 
 
 def create_session(userid: UUID, session: Session) -> ChatUiDBSession:
@@ -419,8 +445,7 @@ async def session_new(
 ) -> ChatUiDBSession:
     # check the userid exists
     try:
-        if session.exec(select(Users).where(Users.userid == userid)).one() is None:
-            raise HTTPException(status_code=404, detail="User not found")
+        session.exec(select(Users).where(Users.userid == userid)).one()
     except NoResultFound:
         raise HTTPException(status_code=404, detail="User not found")
 
@@ -449,8 +474,6 @@ async def session_update(
 
     except NoResultFound:
         raise HTTPException(status_code=404, detail="Session not found")
-    if chatsession is None:
-        raise HTTPException(status_code=404, detail="Session not found")
     chatsession.name = form.name
     session.add(chatsession)
     session.commit()
@@ -464,14 +487,13 @@ async def session_update(
     return chatsession
 
 
-@app.get("/sessions/{userid}")
+@app.get(f"{Urls.Sessions}/{{userid}}")
 async def get_user_sessions(
     userid: UUID, create: bool = True, session: Session = Depends(get_session)
 ) -> Sequence[ChatUiDBSession]:
+    # check the user exists first
     try:
-        if session.exec(select(Users).where(Users.userid == userid)).one() is None:
-            logger.info("User not found when asking for sessions", userid=userid)
-            raise HTTPException(status_code=404, detail="User not found")
+        session.exec(select(Users).where(Users.userid == userid)).one()
     except NoResultFound:
         logger.info("User not found when asking for sessions", userid=userid)
         raise HTTPException(status_code=404, detail="User not found")
@@ -492,6 +514,150 @@ async def get_user_sessions(
         res = [create_session(userid, session)]
 
     return res
+
+
+@app.get(Urls.AdminSessions)
+async def admin_sessions(
+    admin_password: Annotated[str, Header()],
+    userid: Optional[UUID] = None,
+    session: Session = Depends(get_session),
+) -> List[ChatUiDBSession]:
+    """
+    *** Requires the admin password to be set in config ***
+
+    Query the sessions database.
+
+
+    Extra filters:
+
+    - userid (a given userid)
+
+    """
+    config = Config()
+
+    if config.admin_password is None:
+        raise HTTPException(500, "Admin password not available")
+
+    if config.admin_password != admin_password:
+        raise HTTPException(403, "Admin password incorrect")
+
+    query = select(ChatUiDBSession)
+    if userid is not None:
+        query = query.where(ChatUiDBSession.userid == userid)
+    return [item for item in session.exec(query).all()]
+
+
+@app.get(Urls.AdminJobs)
+async def admin_jobs(
+    admin_password: Annotated[str, Header()],
+    userid: Optional[UUID] = None,
+    sessionid: Optional[UUID] = None,
+    session: Session = Depends(get_session),
+) -> List[Job]:
+    """
+    *** Requires the admin password to be set in config ***
+
+    Query the jobs table, maybe filtering on a userid or sessionid.
+
+    extra filters:
+
+    - userid (a given userid)
+    - sessionid (a given chat session id)
+    """
+    config = Config()
+
+    if config.admin_password is None:
+        raise HTTPException(500, "Admin password not available")
+
+    if config.admin_password != admin_password:
+        raise HTTPException(403, "Admin password incorrect")
+
+    query = select(Jobs)
+    if userid is not None:
+        query = query.where(Jobs.userid == userid)
+    if sessionid is not None:
+        query = query.where(Jobs.sessionid == sessionid)
+    return [Job.from_jobs(job, None) for job in session.exec(query).all()]
+
+
+@app.get(Urls.AdminUsers)
+async def admin_users(
+    admin_password: Annotated[str, Header()],
+    userid: Optional[UUID] = None,
+    session: Session = Depends(get_session),
+) -> List[Users]:
+    """
+    *** Requires the admin password to be set in config ***
+
+    Query the users, maybe filtering on an userid
+
+
+    """
+    config = Config()
+
+    if config.admin_password is None:
+        raise HTTPException(500, "Admin password not available")
+
+    if config.admin_password != admin_password:
+        raise HTTPException(403, "Admin password incorrect")
+
+    query = select(Users)
+    if userid is not None:
+        query = query.where(Users.userid == userid.hex)
+    return [item for item in session.exec(query).all()]
+
+
+@app.get(Urls.Analyses)
+async def analyses(
+    analysisid: Optional[UUID] = None,
+    userid: Optional[UUID] = None,
+    session: Session = Depends(get_session),
+) -> List[JobAnalysis]:
+    """
+    Query the analysis sessions
+
+    """
+
+    query = select(JobAnalysis)
+    if userid is not None:
+        query = query.where(JobAnalysis.userid == userid)
+    elif analysisid is not None:
+        query = query.where(JobAnalysis.analysisid == analysisid)
+    else:
+        raise HTTPException(
+            400, "No filters provided, please specify either userid or analysisid"
+        )
+    return [item for item in session.exec(query).all()]
+
+
+@app.get(Urls.AdminAnalyses)
+async def admin_analyses(
+    admin_password: Annotated[str, Header()],
+    analysisid: Optional[UUID] = None,
+    userid: Optional[UUID] = None,
+    session: Session = Depends(get_session),
+) -> List[JobAnalysis]:
+    """
+    *** Requires the admin password to be set in config ***
+
+    Query the users, maybe filtering on an userid
+
+
+    """
+    config = Config()
+
+    if config.admin_password is None:
+        raise HTTPException(500, "Admin password not available")
+
+    if config.admin_password != admin_password:
+        raise HTTPException(403, "Admin password incorrect")
+
+    query = select(JobAnalysis)
+    if userid is not None:
+        query = query.where(JobAnalysis.userid == userid)
+    if analysisid is not None:
+        query = query.where(JobAnalysis.analysisid == analysisid)
+    return [item for item in session.exec(query).all()]
 
 
 @app.get("/")

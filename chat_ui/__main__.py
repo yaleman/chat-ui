@@ -12,8 +12,6 @@ import click
 def main(reload: bool = False, host: str = "127.0.0.1", jsonlogs: bool = True) -> None:
     """main function"""
 
-    # logging.basicConfig(handlers=[logs.InterceptHandler()], level=0, force=True)
-
     import uvicorn
 
     if reload:

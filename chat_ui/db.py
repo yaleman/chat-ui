@@ -1,6 +1,7 @@
 from datetime import datetime, UTC
 from enum import IntEnum
 
+from loguru import logger
 from sqlalchemy_utils import UUIDType  # type: ignore
 
 from typing import Any, Optional
@@ -12,7 +13,7 @@ from sqlmodel._compat import SQLModelConfig
 
 
 from sqlalchemy.exc import NoResultFound
-from chat_ui.models import JobStatus
+from chat_ui.models import AnalyzeForm, JobStatus, AnalysisType
 
 sqlmodel.SQLModel.__table_args__ = {"extend_existing": True}
 
@@ -84,6 +85,25 @@ class Jobs(sqlmodel.SQLModel, table=True):
             sessionid=newjobform.sessionid,
         )
 
+    def mark_running(
+        self, session: sqlmodel.Session, status: JobStatus = JobStatus.Running
+    ) -> None:
+        """set in the db that the job is currently running"""
+        self.status = status.value
+        self.updated = datetime.now(UTC)
+        session.add(self)
+        session.commit()
+        session.refresh(self)
+
+    def mark_error(self, session: sqlmodel.Session, error_message: str) -> None:
+        """set the job to error status"""
+        self.status = JobStatus.Error.value
+        self.response = error_message
+        self.updated = datetime.now(UTC)
+        session.add(self)
+        session.commit()
+        session.refresh(self)
+
 
 class FeedbackSuccess(IntEnum):
     """feedback success enum"""
@@ -142,3 +162,60 @@ class ChatUiDBSession(sqlmodel.SQLModel, table=True):
 
     userid: UUID = sqlmodel.Field(foreign_key="users.userid")
     created: datetime = sqlmodel.Field(default_factory=lambda: datetime.now(UTC))
+
+
+class JobAnalysis(sqlmodel.SQLModel, table=True):
+    """the analysis of the prompt or response from the LLM"""
+
+    analysisid: UUID = sqlmodel.Field(
+        default_factory=lambda: uuid4(),
+        primary_key=True,
+        sa_type=UUIDType(binary=False),
+    )
+    jobid: UUID = sqlmodel.Field(
+        foreign_key="jobs.id", index=True, sa_type=UUIDType(binary=False)
+    )
+    userid: UUID = sqlmodel.Field(
+        foreign_key="users.userid", index=True, sa_type=UUIDType(binary=False)
+    )
+    preprompt: str  # what we put in front of the analyzed text
+    response: Optional[str] = None
+    analysis_type: AnalysisType
+    time: datetime = sqlmodel.Field(default_factory=lambda: datetime.now(UTC))
+    updated: Optional[datetime] = None
+    status: JobStatus = JobStatus.Created
+    job_metadata: Optional[str] = None
+
+    def log(self) -> None:
+        """log the entry"""
+        logger.info(*self.model_dump(mode="json"))
+
+    @classmethod
+    def from_analyzeform(cls, analyze_form: AnalyzeForm) -> "JobAnalysis":
+        """turn an analyze_form into this"""
+        return cls(
+            jobid=analyze_form.jobid,
+            userid=analyze_form.userid,
+            preprompt=analyze_form.preprompt,
+            analysis_type=analyze_form.analysis_type,
+            response=None,
+        )
+
+    def mark_running(
+        self, session: sqlmodel.Session, status: JobStatus = JobStatus.Running
+    ) -> None:
+        """set in the db that the job is currently running"""
+        self.status = status
+        self._save(session)
+
+    def mark_error(self, session: sqlmodel.Session, error_message: str) -> None:
+        """set the job to error status"""
+        self.status = JobStatus.Error
+        self.response = error_message
+        self._save(session)
+
+    def _save(self, session: sqlmodel.Session) -> None:
+        self.updated = datetime.now(UTC)
+        session.add(self)
+        session.commit()
+        session.refresh(self)

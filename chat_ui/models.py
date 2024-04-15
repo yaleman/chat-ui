@@ -21,7 +21,7 @@ class RequestType(StrEnum):
     Plain = "plain"
     PromptInjection = "prompt_injection"
     SensitiveDisclosure = "sensitive_disclosure"
-    InsecureOutPut = "insecure_output"
+    InsecureOutput = "insecure_output"
 
 
 class WebSocketMessageType(StrEnum):
@@ -163,6 +163,9 @@ class WebSocketResponse(BaseModel):
 
 
 class LogMessages(StrEnum):
+    AnalysisJobMetadata = "analysis job metadata"
+    AnalysisJobStarting = "analysis job starting"
+    AnalysisJobCompletionOutput = "analysis completion output"
     BackgroundPollerShutdown = "Background poller is stopping"
     DeleteNotFound = "delete but not found"
     JobCompleted = "job completed"
@@ -183,3 +186,22 @@ class LogMessages(StrEnum):
     UserUpdate = "user update"
     WebsocketError = "websocket error"
     WebsocketDisconnected = "websocket disconnected"
+
+
+class AnalysisType(StrEnum):
+    """used when pushing the prompt or response back through the LLM"""
+
+    Prompt = "prompt"
+    Response = "response"
+    PromptAndResponse = "prompt_and_response"
+
+
+class AnalyzeForm(BaseModel):
+    """form submitted for analysis of a prompt / response"""
+
+    jobid: Annotated[UUID, AfterValidator(validate_userid)]
+    userid: Annotated[UUID, AfterValidator(validate_userid)]
+
+    analysis_type: AnalysisType
+    # the thing we put in front of the prompt
+    preprompt: str
