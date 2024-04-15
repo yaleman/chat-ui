@@ -342,6 +342,8 @@ createApp({
                 console.debug("Got new session", responseData);
                 this.currentSessionid = responseData.sessionid;
                 this.currentSessionName = responseData.name;
+                this.jobs = {};
+                this.lastJobsCheck = 0;
                 localStorage.setItem("sessionId", responseData.sessionid);
             }).catch(err => {
                 console.error(`failed to create new session: ${err}`);
