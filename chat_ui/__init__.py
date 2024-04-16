@@ -516,6 +516,29 @@ async def get_user_sessions(
     return res
 
 
+@app.get(Urls.Analyses)
+async def analyses(
+    analysisid: Optional[UUID] = None,
+    userid: Optional[UUID] = None,
+    session: Session = Depends(get_session),
+) -> List[JobAnalysis]:
+    """
+    Query the analysis sessions
+
+    """
+
+    query = select(JobAnalysis)
+    if userid is not None:
+        query = query.where(JobAnalysis.userid == userid)
+    elif analysisid is not None:
+        query = query.where(JobAnalysis.analysisid == analysisid)
+    else:
+        raise HTTPException(
+            400, "No filters provided, please specify either userid or analysisid"
+        )
+    return [item for item in session.exec(query).all()]
+
+
 @app.get(Urls.AdminSessions)
 async def admin_sessions(
     admin_password: Annotated[str, Header()],
@@ -604,29 +627,6 @@ async def admin_users(
     query = select(Users)
     if userid is not None:
         query = query.where(Users.userid == userid.hex)
-    return [item for item in session.exec(query).all()]
-
-
-@app.get(Urls.Analyses)
-async def analyses(
-    analysisid: Optional[UUID] = None,
-    userid: Optional[UUID] = None,
-    session: Session = Depends(get_session),
-) -> List[JobAnalysis]:
-    """
-    Query the analysis sessions
-
-    """
-
-    query = select(JobAnalysis)
-    if userid is not None:
-        query = query.where(JobAnalysis.userid == userid)
-    elif analysisid is not None:
-        query = query.where(JobAnalysis.analysisid == analysisid)
-    else:
-        raise HTTPException(
-            400, "No filters provided, please specify either userid or analysisid"
-        )
     return [item for item in session.exec(query).all()]
 
 
