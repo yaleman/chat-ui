@@ -11,6 +11,8 @@ services:
       - "9195:9195"
     environment:
       - "CHATUI_BACKEND_URL=http://llama:8000/v1"
+    env_file:
+      - .dockerenv
     healthcheck:
       test: ["CMD", "python", "-m", "chat_ui.healthcheck"]
       interval: 30s
