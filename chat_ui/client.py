@@ -8,7 +8,7 @@ import click
 from loguru import logger
 import requests
 
-from chat_ui.db import ChatUiDBSession
+from chat_ui.db import ChatUiDBSession, JobAnalysis, Users
 from chat_ui.enums import Urls
 from chat_ui.forms import NewJobForm, SessionUpdateForm, UserForm
 from chat_ui.models import Job, RequestType
@@ -204,6 +204,109 @@ class ChatUIClient:
         logger.success("Successfully created job!")
 
         return Job.model_validate(res.json())
+
+    def admin_jobs(
+        self,
+        admin_password: str,
+        userid: Optional[UUID] = None,
+        sessionid: Optional[UUID] = None,
+        session: Optional[requests.Session] = None,
+    ) -> List[Job]:
+
+        params = {}
+        if userid is not None:
+            params["userid"] = userid.hex
+        if sessionid is not None:
+            params["sessionid"] = sessionid.hex
+
+        headers = {
+            "admin_password": admin_password,
+        }
+
+        if session is None:
+            session = self.get_session()
+        res = session.get(Urls.AdminJobs, headers=headers, params=params)
+        if res.status_code != 200:
+            logger.error(f"Failed to get jobs: {res.text}")
+            return []
+        else:
+            result: List[Job] = [Job.model_validate(job) for job in res.json()]
+            return result
+
+    def admin_sessions(
+        self,
+        admin_password: str,
+        userid: UUID,
+        session: Optional[requests.Session] = None,
+    ) -> List[ChatUiDBSession]:
+
+        headers = {
+            "admin_password": admin_password,
+        }
+
+        if session is None:
+            session = self.get_session()
+        res = session.get(
+            Urls.AdminSessions, headers=headers, params={"userid": userid.hex}
+        )
+        if res.status_code != 200:
+            logger.error(f"Failed to get sessions: {res.text}")
+            return []
+        else:
+            result: List[ChatUiDBSession] = [
+                ChatUiDBSession.model_validate(session) for session in res.json()
+            ]
+            return result
+
+    def admin_users(
+        self,
+        admin_password: str,
+        userid: UUID,
+        session: Optional[requests.Session] = None,
+    ) -> List[Users]:
+
+        headers = {
+            "admin_password": admin_password,
+        }
+
+        params = {"userid": userid.hex} if userid is not None else {}
+
+        if session is None:
+            session = self.get_session()
+        res = session.get(Urls.AdminUsers, headers=headers, params=params)
+        if res.status_code != 200:
+            logger.error(f"Failed to get users: {res.text}")
+            return []
+        else:
+            result: List[Users] = [Users.model_validate(user) for user in res.json()]
+            return result
+
+    def admin_analyses(
+        self,
+        admin_password: str,
+        analysisid: Optional[UUID] = None,
+        userid: Optional[UUID] = None,
+        session: Optional[requests.Session] = None,
+    ) -> List[JobAnalysis]:
+
+        headers = {
+            "admin_password": admin_password,
+        }
+
+        if session is None:
+            session = self.get_session()
+        params = {"userid": userid.hex} if userid is not None else {}
+        if analysisid is not None:
+            params["analysisid"] = analysisid.hex
+        res = session.get(Urls.AdminAnalyses, headers=headers, params=params)
+        if res.status_code != 200:
+            logger.error(f"Failed to get analyses: {res.text}")
+            return []
+        else:
+            result: List[JobAnalysis] = [
+                JobAnalysis.model_validate(analysis) for analysis in res.json()
+            ]
+            return result
 
 
 @click.group()
