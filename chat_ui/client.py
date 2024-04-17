@@ -46,7 +46,8 @@ class ChatUIClient:
         if self.session is not None:
             return self.session
         session = requests.Session()
-        session.verify = self.skip_tls
+        if self.skip_tls:
+            session.verify = False
         self.session = session
         return session
 
