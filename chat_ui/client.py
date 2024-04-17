@@ -8,10 +8,10 @@ import click
 from loguru import logger
 import requests
 
-from chat_ui.db import ChatUiDBSession, JobAnalysis, Jobs, Users
+from chat_ui.db import ChatUiDBSession, JobAnalysis, Users
 from chat_ui.enums import Urls
 from chat_ui.forms import NewJobForm, SessionUpdateForm, UserForm
-from chat_ui.models import AnalysisType, AnalyzeForm, Job, RequestType
+from chat_ui.models import AnalysisType, AnalyzeForm, Job, JobDetail, RequestType
 
 # Usage:
 # Environment variables
@@ -83,14 +83,14 @@ class ChatUIClient:
 
     def get_job(
         self, userid: UUID, jobid: UUID, session: Optional[requests.Session] = None
-    ) -> Jobs:
+    ) -> JobDetail:
         """get an individual job"""
         if session is None:
             session = self._get_session()
 
         res = session.get(f"{self.base_url}{Urls.Jobs}/{userid}/{jobid}")
         res.raise_for_status()
-        return Jobs.model_validate(res.json())
+        return JobDetail.model_validate(res.json())
 
     def create_or_update_user(
         self,
