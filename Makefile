@@ -67,3 +67,9 @@ checks:
 coverage: ## Run tests with coverage
 coverage:
 	poetry run pytest --cov-report html --cov=chat_ui tests
+
+.PHONY: codespell
+codespell: ## spell-check things.
+codespell:
+	poetry run codespell -c \
+		--skip='.venv,.mypy_cache,poetry.lock,./node_modules,./htmlcov'
