@@ -41,7 +41,7 @@ class ChatUIClient:
         self.skip_tls = skip_tls
         self.session: Optional[requests.Session] = session
 
-    def get_session(self) -> requests.Session:
+    def _get_session(self) -> requests.Session:
         """get a requests session"""
         if self.session is not None:
             return self.session
@@ -60,7 +60,7 @@ class ChatUIClient:
     ) -> List[Dict[str, Any]]:
         """get jobs"""
         if session is None:
-            session = self.get_session()
+            session = self._get_session()
         params = {}
         if userid is not None:
             params["userid"] = userid.hex
@@ -71,10 +71,9 @@ class ChatUIClient:
             url = f"{self.base_url}{Urls.Jobs}"
             if not params:
                 raise ValueError("You need to specify a userid or admin password!")
-
         else:
             url = f"{self.base_url}{Urls.AdminJobs}"
-            headers["admin-password"] = admin_password
+            headers = self._admin_header(admin_password)
         res = session.get(url, params=params, headers=headers)
         if res.status_code != 200:
             logger.error(f"Failed to get jobs: {res.text}")
@@ -91,7 +90,7 @@ class ChatUIClient:
     ) -> Dict[str, Any]:
         """create or update a user"""
         if session is None:
-            session = self.get_session()
+            session = self._get_session()
 
         logger.info(f"Creating or updating {userid=} {name=}", file=sys.stderr)
         payload = UserForm(userid=userid, name=name)
@@ -111,7 +110,7 @@ class ChatUIClient:
     ) -> Optional[ChatUiDBSession]:
         """create a session"""
         if session is None:
-            session = self.get_session()
+            session = self._get_session()
 
         res = session.post(f"{self.base_url}/session/new/{userid}")
         if res.status_code != 200:
@@ -134,7 +133,7 @@ class ChatUIClient:
     ) -> Optional[ChatUiDBSession]:
         """update a session"""
         if session is None:
-            session = self.get_session()
+            session = self._get_session()
 
         payload = SessionUpdateForm(name=name)
         res = session.post(
@@ -158,7 +157,7 @@ class ChatUIClient:
     ) -> List[ChatUiDBSession]:
         """get sessions"""
         if session is None:
-            session = self.get_session()
+            session = self._get_session()
 
         headers = {}
 
@@ -170,7 +169,7 @@ class ChatUIClient:
         else:
             url = f"{self.base_url}{Urls.AdminSessions.value}"
             params = {"userid": userid.hex} if userid is not None else {}
-            headers["admin-password"] = admin_password
+            headers = self._admin_header(admin_password)
 
         res = session.get(
             url,
@@ -202,7 +201,7 @@ class ChatUIClient:
         """push a job"""
 
         if session is None:
-            session = self.get_session()
+            session = self._get_session()
 
         payload = NewJobForm(
             prompt=prompt,
@@ -227,14 +226,12 @@ class ChatUIClient:
         session: Optional[requests.Session] = None,
     ) -> List[Users]:
         """gets the users from the system, is an admin-only endpoint currently"""
-        headers = {
-            "admin_password": admin_password,
-        }
+        headers = self._admin_header(admin_password)
 
         params = {"userid": userid.hex} if userid is not None else {}
 
         if session is None:
-            session = self.get_session()
+            session = self._get_session()
         res = session.get(
             f"{self.base_url}{Urls.AdminUsers}", headers=headers, params=params
         )
@@ -254,7 +251,7 @@ class ChatUIClient:
     ) -> List[JobAnalysis]:
         """Get the analyses, pass the admin password if you want to get everything"""
         if session is None:
-            session = self.get_session()
+            session = self._get_session()
         params = {}
         if userid is not None:
             params["userid"] = userid.hex
@@ -270,9 +267,7 @@ class ChatUIClient:
                 )
         else:
             url = f"{self.base_url}{Urls.AdminAnalyses}"
-            headers = {
-                "admin_password": admin_password,
-            }
+            headers = self._admin_header(admin_password)
 
         res = session.get(url=url, headers=headers, params=params)
         if res.status_code != 200:
@@ -283,6 +278,11 @@ class ChatUIClient:
                 JobAnalysis.model_validate(analysis) for analysis in res.json()
             ]
             return result
+
+    @classmethod
+    def _admin_header(cls, admin_password: str) -> dict[str, str]:
+        """return an admin header"""
+        return {"admin-password": admin_password}
 
 
 @click.group()
