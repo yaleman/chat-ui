@@ -65,9 +65,9 @@ class ChatUIClient:
             params["sessionid"] = sessionid.hex
         headers = {}
         if admin_password is None:
-            url = f"{self.base_url}/jobs"
+            url = f"{self.base_url}{Urls.Jobs}"
         else:
-            url = f"{self.base_url}/admin/jobs"
+            url = f"{self.base_url}{Urls.AdminJobs}"
             headers["admin-password"] = admin_password
         res = session.get(url, params=params, headers=headers)
         if res.status_code != 200:
@@ -197,7 +197,9 @@ class ChatUIClient:
             userid=userid,
             request_type=request_type,
         )
-        res = session.post(f"{self.base_url}/job", json=payload.model_dump(mode="json"))
+        res = session.post(
+            f"{self.base_url}{Urls.Job}", json=payload.model_dump(mode="json")
+        )
         if res.status_code != 200:
             logger.error("Failed to create job: {}", res.text)
             return None
@@ -205,66 +207,13 @@ class ChatUIClient:
 
         return Job.model_validate(res.json())
 
-    def admin_jobs(
+    def get_users(
         self,
-        admin_password: str,
-        userid: Optional[UUID] = None,
-        sessionid: Optional[UUID] = None,
-        session: Optional[requests.Session] = None,
-    ) -> List[Job]:
-
-        params = {}
-        if userid is not None:
-            params["userid"] = userid.hex
-        if sessionid is not None:
-            params["sessionid"] = sessionid.hex
-
-        headers = {
-            "admin_password": admin_password,
-        }
-
-        if session is None:
-            session = self.get_session()
-        res = session.get(Urls.AdminJobs, headers=headers, params=params)
-        if res.status_code != 200:
-            logger.error(f"Failed to get jobs: {res.text}")
-            return []
-        else:
-            result: List[Job] = [Job.model_validate(job) for job in res.json()]
-            return result
-
-    def admin_sessions(
-        self,
-        admin_password: str,
         userid: UUID,
-        session: Optional[requests.Session] = None,
-    ) -> List[ChatUiDBSession]:
-
-        headers = {
-            "admin_password": admin_password,
-        }
-
-        if session is None:
-            session = self.get_session()
-        res = session.get(
-            Urls.AdminSessions, headers=headers, params={"userid": userid.hex}
-        )
-        if res.status_code != 200:
-            logger.error(f"Failed to get sessions: {res.text}")
-            return []
-        else:
-            result: List[ChatUiDBSession] = [
-                ChatUiDBSession.model_validate(session) for session in res.json()
-            ]
-            return result
-
-    def admin_users(
-        self,
         admin_password: str,
-        userid: UUID,
         session: Optional[requests.Session] = None,
     ) -> List[Users]:
-
+        """gets the users from the system, is an admin-only endpoint currently"""
         headers = {
             "admin_password": admin_password,
         }
@@ -273,7 +222,9 @@ class ChatUIClient:
 
         if session is None:
             session = self.get_session()
-        res = session.get(Urls.AdminUsers, headers=headers, params=params)
+        res = session.get(
+            f"{self.base_url}{Urls.AdminUsers}", headers=headers, params=params
+        )
         if res.status_code != 200:
             logger.error(f"Failed to get users: {res.text}")
             return []
@@ -281,24 +232,36 @@ class ChatUIClient:
             result: List[Users] = [Users.model_validate(user) for user in res.json()]
             return result
 
-    def admin_analyses(
+    def get_analyses(
         self,
-        admin_password: str,
+        admin_password: Optional[str] = None,
         analysisid: Optional[UUID] = None,
         userid: Optional[UUID] = None,
         session: Optional[requests.Session] = None,
     ) -> List[JobAnalysis]:
-
-        headers = {
-            "admin_password": admin_password,
-        }
-
+        """Get the analyses, pass the admin password if you want to get everything"""
         if session is None:
             session = self.get_session()
-        params = {"userid": userid.hex} if userid is not None else {}
+        params = {}
+        if userid is not None:
+            params["userid"] = userid.hex
         if analysisid is not None:
             params["analysisid"] = analysisid.hex
-        res = session.get(Urls.AdminAnalyses, headers=headers, params=params)
+
+        if admin_password is None:
+            url = f"{self.base_url}{Urls.Analyses}"
+            headers = {}
+            if not params:
+                raise ValueError(
+                    "You need to specify a userid or analysisid to get analyses as a non-admin!"
+                )
+        else:
+            url = f"{self.base_url}{Urls.AdminAnalyses}"
+            headers = {
+                "admin_password": admin_password,
+            }
+
+        res = session.get(url=url, headers=headers, params=params)
         if res.status_code != 200:
             logger.error(f"Failed to get analyses: {res.text}")
             return []

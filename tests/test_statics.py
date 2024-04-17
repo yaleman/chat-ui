@@ -4,7 +4,7 @@ from chat_ui import app
 from chat_ui.enums import Urls
 
 
-def filetest(dir: str) -> None:
+def file_test(dir: str) -> None:
     client = TestClient(app)
     for filename in os.listdir(f"chat_ui/{dir}"):
         assert client.get(f"/{dir}/{filename}").status_code == 200
@@ -18,14 +18,14 @@ def test_healthcheck() -> None:
 
 def test_css() -> None:
     """test pulling a file from the /css directory"""
-    filetest("css")
+    file_test("css")
 
 
 def test_img() -> None:
     """test pulling a file from the /img directory"""
-    filetest("img")
+    file_test("img")
 
 
 def test_js() -> None:
     """test pulling a file from the /js directory"""
-    filetest("js")
+    file_test("js")
