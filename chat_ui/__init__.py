@@ -297,7 +297,7 @@ async def jobs(
     return [Job.from_jobs(job, None) for job in session.exec(query).all()]
 
 
-@app.get("/jobs/{userid}/{job_id}")
+@app.get(f"{Urls.Jobs}/{{userid}}/{{job_id}}")
 async def job_detail(
     userid: UUID,
     job_id: UUID,
