@@ -88,7 +88,7 @@ class ChatUIClient:
         if session is None:
             session = self._get_session()
 
-        res = session.get(f"{self.base_url}{Urls.Job}/{userid.hex}/{jobid.hex}")
+        res = session.get(f"{self.base_url}{Urls.Job}/{userid}/{jobid}")
         res.raise_for_status()
         return Jobs.model_validate(res.json())
 
