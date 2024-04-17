@@ -1,6 +1,7 @@
 FROM python:3.12-slim
 
 HEALTHCHECK --interval=15s --timeout=3s \
+  USER adduser \
   CMD /usr/bin/curl -sf http://localhost:9195/healthcheck || exit 1
 
 # install curl for healthchecks
