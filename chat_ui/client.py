@@ -8,7 +8,7 @@ import click
 from loguru import logger
 import requests
 
-from chat_ui.db import ChatUiDBSession, JobAnalysis, Users
+from chat_ui.db import ChatUiDBSession, JobAnalysis, Jobs, Users
 from chat_ui.enums import Urls
 from chat_ui.forms import NewJobForm, SessionUpdateForm, UserForm
 from chat_ui.models import AnalysisType, AnalyzeForm, Job, RequestType
@@ -57,7 +57,7 @@ class ChatUIClient:
         sessionid: Optional[UUID] = None,
         session: Optional[requests.Session] = None,
         admin_password: Optional[str] = None,
-    ) -> List[Dict[str, Any]]:
+    ) -> List[Job]:
         """get jobs"""
         if session is None:
             session = self._get_session()
@@ -79,8 +79,18 @@ class ChatUIClient:
             logger.error(f"Failed to get jobs: {res.text}")
             return []
         else:
-            result: List[Dict[str, Any]] = res.json()
-            return result
+            return [Job.model_validate(job) for job in res.json()]
+
+    def get_job(
+        self, userid: UUID, jobid: UUID, session: Optional[requests.Session] = None
+    ) -> Jobs:
+        """get an individual job"""
+        if session is None:
+            session = self._get_session()
+
+        res = session.get(f"{self.base_url}{Urls.Job}/{userid.hex}/{jobid.hex}")
+        res.raise_for_status()
+        return Jobs.model_validate(res.json())
 
     def create_or_update_user(
         self,
