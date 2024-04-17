@@ -52,20 +52,25 @@ class ChatUIClient:
 
     def get_jobs(
         self,
-        userid: UUID,
-        sessionid: Optional[UUID],
+        userid: Optional[UUID] = None,
+        sessionid: Optional[UUID] = None,
         session: Optional[requests.Session] = None,
         admin_password: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
         """get jobs"""
         if session is None:
             session = self.get_session()
-        params = {"userid": userid.hex}
+        params = {}
+        if userid is not None:
+            params["userid"] = userid.hex
         if sessionid is not None:
             params["sessionid"] = sessionid.hex
         headers = {}
         if admin_password is None:
             url = f"{self.base_url}{Urls.Jobs}"
+            if not params:
+                raise ValueError("You need to specify a userid or admin password!")
+
         else:
             url = f"{self.base_url}{Urls.AdminJobs}"
             headers["admin-password"] = admin_password
@@ -146,7 +151,7 @@ class ChatUIClient:
 
     def get_sessions(
         self,
-        userid: UUID,
+        userid: Optional[UUID] = None,
         session: Optional[requests.Session] = None,
         admin_password: Optional[str] = None,
     ) -> List[ChatUiDBSession]:
@@ -155,14 +160,21 @@ class ChatUIClient:
             session = self.get_session()
 
         headers = {}
+
         if admin_password is None:
             url = f"{self.base_url}/sessions/{userid}?create=False"
+            if userid is None:
+                raise ValueError("You need to specify a userid or admin password!")
+            params = {}
         else:
             url = f"{self.base_url}{Urls.AdminSessions.value}"
+            params = {"userid": userid.hex} if userid is not None else {}
             headers["admin-password"] = admin_password
+
         res = session.get(
             url,
             headers=headers,
+            params=params,
         )
 
         if res.status_code != 200:
@@ -209,8 +221,8 @@ class ChatUIClient:
 
     def get_users(
         self,
-        userid: UUID,
         admin_password: str,
+        userid: Optional[UUID] = None,
         session: Optional[requests.Session] = None,
     ) -> List[Users]:
         """gets the users from the system, is an admin-only endpoint currently"""
