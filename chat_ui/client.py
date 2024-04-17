@@ -11,7 +11,7 @@ import requests
 from chat_ui.db import ChatUiDBSession, JobAnalysis, Users
 from chat_ui.enums import Urls
 from chat_ui.forms import NewJobForm, SessionUpdateForm, UserForm
-from chat_ui.models import Job, RequestType
+from chat_ui.models import AnalysisType, AnalyzeForm, Job, RequestType
 
 # Usage:
 # Environment variables
@@ -283,6 +283,28 @@ class ChatUIClient:
     def _admin_header(cls, admin_password: str) -> dict[str, str]:
         """return an admin header"""
         return {"admin-password": admin_password}
+
+    def create_analysis(
+        self,
+        userid: UUID,
+        jobid: UUID,
+        analysis_type: AnalysisType,
+        preprompt: str,
+        session: Optional[requests.Session] = None,
+    ) -> JobAnalysis:
+        """create an analysis job in the backend"""
+        if session is None:
+            session = self._get_session()
+
+        url = f"{self.base_url}{Urls.Analyse}"
+        payload = AnalyzeForm(
+            jobid=jobid, userid=userid, analysis_type=analysis_type, preprompt=preprompt
+        )
+
+        res = session.post(url, json=payload.model_dump(mode="json"))
+        res.raise_for_status()
+
+        return JobAnalysis.model_validate(res.json())
 
 
 @click.group()
