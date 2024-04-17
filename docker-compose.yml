@@ -7,6 +7,8 @@ services:
       context: .
     image: "chat-ui"
     container_name: "chat-ui"
+    security_opt:
+      - "no-new-privileges:true"
     ports:
       - "9195:9195"
     environment:
@@ -25,6 +27,8 @@ services:
   llama:
     image: "ghcr.io/abetlen/llama-cpp-python:latest"
     container_name: "llama"
+    security_opt:
+      - "no-new-privileges:true"
     ports:
       - "9196:8000"
     environment:
