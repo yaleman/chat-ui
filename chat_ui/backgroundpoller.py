@@ -286,31 +286,30 @@ class BackgroundPoller(threading.Thread):
                 session.add(job)
                 session.commit()
                 session.refresh(job)
+            # something went wrong, set it to error status
             except Exception as error:
-                # something went wrong, set it to error status, start a new session
-                with Session(self.engine) as new_session:
-                    job = new_session.exec(select(Jobs).where(Jobs.id == job.id)).one()
-                    job.status = JobStatus.Error.value
-                    if "Connection error" in str(error):
-                        logger.error(
-                            "Failed to connect to backend!",
-                            **job.model_dump(),
-                        )
-                        job.response = "Failed to connect to backend, try again please!"
+                # clear out the existing cache of objects
+                session.expire_all()
+                job = session.exec(select(Jobs).where(Jobs.id == job.id)).one()
+                job.status = JobStatus.Error.value
+                if "Connection error" in str(error):
+                    logger.error(
+                        "Failed to connect to backend!",
+                        **job.model_dump(),
+                    )
+                    job.response = "Failed to connect to backend, try again please!"
 
-                    else:
-                        job.response = str(error)
-                        logger.error(
-                            "error processing job",
-                            error=job.response,
-                            **job.model_dump(),
-                        )
+                else:
+                    job.response = str(error)
+                    logger.error(
+                        "error processing job",
+                        error=job.response,
+                        **job.model_dump(),
+                    )
 
-                    job.updated = datetime.now(UTC)
-                    new_session.add(job)
-                    new_session.commit()
-                    new_session.refresh(job)
-
+                job.updated = datetime.now(UTC)
+                session.add(job)
+                session.commit()
         except NoResultFound:
             # logger.debug(LogMessages.NoJobs)
             # don't just infinispin
