@@ -473,10 +473,10 @@ def job(
             sys.exit(1)
         else:
             if len(res) == 0:
-                print("No jobs found")
+                logger.debug("No jobs found")
                 return
             else:
-                print("Got jobs!")
+                logger.debug("Got jobs!")
                 for job in res:
                     print(json.dumps(job, indent=4))
     elif command == JobCommands.Create:
