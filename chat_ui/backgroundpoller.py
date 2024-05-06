@@ -312,7 +312,7 @@ class BackgroundPoller(threading.Thread):
                     new_session.refresh(job)
 
         except NoResultFound:
-            logger.debug(LogMessages.NoJobs)
+            # logger.debug(LogMessages.NoJobs)
             # don't just infinispin
             time.sleep(0.1)
 
