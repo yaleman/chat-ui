@@ -1,8 +1,5 @@
 FROM python:3.12-slim
 
-HEALTHCHECK --interval=15s --timeout=3s \
-  USER adduser \
-  CMD /usr/bin/curl -sf http://localhost:9195/healthcheck || exit 1
 
 # install curl for healthchecks
 RUN apt-get update && apt-get install -y --no-install-recommends curl \
@@ -24,5 +21,9 @@ ENV PATH="/home/appuser/.local/bin:${PATH}"
 
 RUN pip install --no-cache-dir /app/
 ENV CHATUI_DB_PATH=/db/chatui.sqlite3
+
+
+HEALTHCHECK --interval=15s --timeout=3s \
+  CMD /usr/bin/curl -sf http://localhost:9195/healthcheck || exit 1
 
 CMD ["python", "-m", "chat_ui", "--host", "0.0.0.0"]
