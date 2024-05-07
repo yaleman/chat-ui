@@ -5,6 +5,7 @@ from typing import Tuple, Union
 from fastapi import Request, WebSocket
 from loguru import logger
 from openai import AsyncOpenAI
+import requests
 from sqlalchemy import func
 from sqlalchemy.exc import NoResultFound
 from sqlmodel import Session, or_, select
@@ -72,3 +73,25 @@ def html_from_response(input: str) -> str:
             "Failed to convert markdown to HTML, returning raw input", error=error
         )
         return input
+
+
+def get_model_name() -> str:
+    """pulls the model name from the configured llama-cpp-python instance"""
+    base_url = Config().backend_url
+    model_url = f"{base_url}/models"
+    try:
+        response = requests.get(model_url)
+        data = response.json()
+        if "data" in data:
+            data_array = data.get("data", [])
+            if len(data_array) == 0:
+                return "unknown_model"
+            data = data_array[0].get("id", "unknown_model")
+            filename = data.split("/")[-1]
+            if "." in filename:
+                return ".".join(filename.split(".")[:-1])
+        else:
+            return "unknown_model"
+    except Exception as error:
+        logger.error("Failed to get model name", error=error)
+    return "unknown_model"
