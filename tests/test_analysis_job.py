@@ -29,7 +29,7 @@ async def test_analysis_job(session: sqlmodel.Session) -> None:
     client = TestClient(app)
 
     # create the background poller object
-    backgroundpoller = BackgroundPoller(engine=engine)
+    backgroundpoller = BackgroundPoller(engine=engine, model_name="testing")
 
     # create the user
     userid = uuid4()

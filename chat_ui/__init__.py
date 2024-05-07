@@ -27,7 +27,6 @@ from loguru import logger
 
 from prometheus_fastapi_instrumentator import Instrumentator
 
-
 from sqlmodel import Session, or_, select
 import sqlmodel
 
@@ -61,7 +60,7 @@ from chat_ui.models import (
     WebSocketMessageType,
     WebSocketResponse,
 )
-from chat_ui.utils import get_client_ip, html_from_response
+from chat_ui.utils import get_client_ip, get_model_name, html_from_response
 
 logger.remove()
 logger.add(sink=sink)
@@ -150,7 +149,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[Any, Any]:
         migrate_database(engine)
         startup_check_outstanding_jobs(engine)
 
-        t = BackgroundPoller(engine)
+        t = BackgroundPoller(engine, get_model_name())
         t.start()
     logger.info("Prechecks done, starting app")
 

@@ -2,14 +2,12 @@
 
 import asyncio
 from datetime import datetime, UTC
-from functools import lru_cache
 import json
 import threading
 import time
 from typing import List, Optional, Tuple, Union
 from uuid import UUID, uuid4
 
-import aiohttp
 from loguru import logger
 from pydantic import BaseModel, Field
 
@@ -128,36 +126,13 @@ def sort_by_updated_or_created(objects: List[Jobs]) -> List[Jobs]:
 
 
 class BackgroundPoller(threading.Thread):
-    def __init__(self, engine: Engine):
+    def __init__(self, engine: Engine, model_name: str):
         super().__init__()
         self.config = Config()
+        self.model_name = model_name
         self.message = "run"
         self.engine = engine
         self.event_loop = asyncio.new_event_loop()
-
-    @lru_cache(typed=False)
-    async def get_model_name(self) -> str:
-        """queries the backend looking for the model"""
-        base_url = Config().backend_url
-
-        model_url = f"{base_url}/models"
-        try:
-            async with aiohttp.ClientSession() as session:
-                async with session.get(model_url) as response:
-                    data = await response.json()
-                    if "data" in data:
-                        data_array = data.get("data", [])
-                        if len(data_array) == 0:
-                            return "unknown_model"
-                        data = data_array[0].get("id", "unknown_model")
-                        filename = data.split("/")[-1]
-                        if "." in filename:
-                            return ".".join(filename.split(".")[:-1])
-                    else:
-                        return "unknown_model"
-        except Exception as error:
-            logger.error("Failed to get model name", error=error)
-        return "unknown_model"
 
     @classmethod
     def check_history_tokens(
@@ -191,7 +166,7 @@ class BackgroundPoller(threading.Thread):
         )
 
         completion = await client.chat.completions.create(
-            model=await self.get_model_name(),
+            model=self.model_name,
             messages=history,
             temperature=0.7,
             stream=False,
@@ -247,6 +222,60 @@ class BackgroundPoller(threading.Thread):
                 id=backgroundjob.id,
             )
 
+    def process_prompt(self, job: Jobs, session: Session) -> None:
+        """handle the prompt processing"""
+        # update the job to say we're doing the thing
+        job.mark_running(session)
+
+        backgroundjob = BackgroundJob.from_jobs(job)
+        self.add_related_jobs(session, backgroundjob)
+
+        try:
+            start_log_entry = {**backgroundjob.model_dump()}
+            history = start_log_entry.pop(
+                "history"
+            )  # need to strip this off because it's just huge
+            logger.debug("job history", id=job.id, userid=job.userid, history=history)
+
+            logger.info(LogMessages.JobStarted, **start_log_entry)
+            # here's where we pass it to the backend
+            background_job_result = self.event_loop.run_until_complete(
+                self.handle_job(backgroundjob)
+            )
+            job.updated = datetime.now(UTC)
+            background_job_result.model_dump(exclude_unset=False, exclude_none=False)
+            for key in background_job_result.model_fields.keys():
+                if key in job.model_fields:
+                    setattr(job, key, getattr(background_job_result, key))
+            logger.debug("Saving job: {}", job.model_dump())
+            session.add(job)
+            session.commit()
+            session.refresh(job)
+        # something went wrong, set it to error status
+        except Exception as error:
+            # clear out the existing cache of objects
+            session.expire_all()
+            job = session.exec(select(Jobs).where(Jobs.id == job.id)).one()
+            job.status = JobStatus.Error.value
+            if "Connection error" in str(error):
+                logger.error(
+                    "Failed to connect to backend!",
+                    **job.model_dump(),
+                )
+                job.response = "Failed to connect to backend, try again please!"
+
+            else:
+                job.response = str(error)
+                logger.error(
+                    "error processing job",
+                    error=job.response,
+                    **job.model_dump(),
+                )
+
+            job.updated = datetime.now(UTC)
+            session.add(job)
+            session.commit()
+
     def process_outstanding_prompts(self, session: Session) -> None:
         """process any outstanding prompt requests"""
         try:
@@ -254,62 +283,8 @@ class BackgroundPoller(threading.Thread):
             job = session.exec(
                 select(Jobs).where(Jobs.status == JobStatus.Created.value)
             ).one()
+            self.process_prompt(job, session)
 
-            # update the job to say we're doing the thing
-            job.mark_running(session)
-
-            backgroundjob = BackgroundJob.from_jobs(job)
-            self.add_related_jobs(session, backgroundjob)
-
-            try:
-                start_log_entry = {**backgroundjob.model_dump()}
-                history = start_log_entry.pop(
-                    "history"
-                )  # need to strip this off because it's just huge
-                logger.debug(
-                    "job history", id=job.id, userid=job.userid, history=history
-                )
-
-                logger.info(LogMessages.JobStarted, **start_log_entry)
-                # here's where we pass it to the backend
-                background_job_result = self.event_loop.run_until_complete(
-                    self.handle_job(backgroundjob)
-                )
-                job.updated = datetime.now(UTC)
-                background_job_result.model_dump(
-                    exclude_unset=False, exclude_none=False
-                )
-                for key in background_job_result.model_fields.keys():
-                    if key in job.model_fields:
-                        setattr(job, key, getattr(background_job_result, key))
-                logger.debug("Saving job: {}", job.model_dump())
-                session.add(job)
-                session.commit()
-                session.refresh(job)
-            # something went wrong, set it to error status
-            except Exception as error:
-                # clear out the existing cache of objects
-                session.expire_all()
-                job = session.exec(select(Jobs).where(Jobs.id == job.id)).one()
-                job.status = JobStatus.Error.value
-                if "Connection error" in str(error):
-                    logger.error(
-                        "Failed to connect to backend!",
-                        **job.model_dump(),
-                    )
-                    job.response = "Failed to connect to backend, try again please!"
-
-                else:
-                    job.response = str(error)
-                    logger.error(
-                        "error processing job",
-                        error=job.response,
-                        **job.model_dump(),
-                    )
-
-                job.updated = datetime.now(UTC)
-                session.add(job)
-                session.commit()
         except NoResultFound:
             # logger.debug(LogMessages.NoJobs)
             # don't just infinispin
@@ -405,7 +380,7 @@ class BackgroundPoller(threading.Thread):
         )
 
         completion = await client.chat.completions.create(
-            model=await self.get_model_name(),
+            model=self.model_name,
             messages=history,
             temperature=0.7,
             stream=False,
