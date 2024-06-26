@@ -11,7 +11,7 @@ import sys
 
 
 from typing import Annotated, Any, AsyncGenerator, Generator, List, Optional, Sequence
-from uuid import UUID, uuid4
+from uuid import UUID
 from fastapi import (
     Depends,
     FastAPI,
@@ -24,8 +24,6 @@ from fastapi import (
 from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.websockets import WebSocketState
 from loguru import logger
-
-from prometheus_fastapi_instrumentator import Instrumentator
 
 from sqlmodel import Session, or_, select
 import sqlmodel
@@ -46,7 +44,7 @@ from chat_ui.websocket_handlers import (
 )
 
 from .config import Config
-from .db import ChatUiDBSession, JobAnalysis, JobFeedback, Jobs, Users
+from .db import ChatUiDBSession, JobAnalysis, JobFeedback, Jobs, Users, migrate_database
 from .logs import sink
 
 from .forms import SessionUpdateForm, NewJobForm, UserDetail, UserForm
@@ -73,53 +71,6 @@ sqlite_url = f"sqlite:///{Config().db_path}"
 engine = sqlmodel.create_engine(sqlite_url, echo=False, connect_args=connect_args)
 
 
-def migrate_database(engine: sqlalchemy.engine.Engine) -> None:
-    """migrate the database"""
-    # backfill any chats that don't have sessions assigned after making sure the table exists
-    with Session(engine) as session:
-        try:
-            session.exec(select(Jobs).where(Jobs.sessionid is None))
-        except Exception as oe:
-            if "no such column: jobs.sessionid" in str(oe):
-                print("Adding sessionid column to jobs table!")
-                session.autoflush = False
-
-                session.exec(  # type: ignore
-                    sqlmodel.text("ALTER TABLE jobs ADD COLUMN sessionid VARCHAR(32)")
-                )
-                session.commit()
-            else:
-                logger.error(oe)
-                sys.exit(1)
-    with Session(engine) as session:
-        # identify the users that need upaating
-        logger.info("Checking for jobs with no session ID assigned.")
-        users = session.exec(  # type: ignore
-            sqlmodel.text("select distinct userid from jobs where sessionid is NULL")
-        ).all()
-
-        # generate a chat session for each user
-        for user in users:
-            sessionid = uuid4()
-            logger.info("fixing jobs for user", userid=user[0], sessionid=sessionid)
-            session.add(ChatUiDBSession(userid=user[0], sessionid=sessionid))
-            session.commit()
-            numjobs = session.scalar(
-                sqlmodel.text(
-                    "select count(id) from jobs where sessionid is NULL and userid=:userid"
-                ).bindparams(userid=user[0])
-            )
-            session.exec(  # type: ignore
-                sqlmodel.text(
-                    "UPDATE jobs set sessionid=:sessionid where sessionid is NULL and userid=:userid"
-                ).bindparams(sessionid=sessionid.hex, userid=user[0])
-            )
-            logger.info(
-                "set sessionids", userid=user[0], count=numjobs, sessionid=sessionid
-            )
-        session.commit()
-
-
 def startup_check_outstanding_jobs(engine: sqlalchemy.engine.Engine) -> None:
     logger.info(
         "Checking for outstanding jobs on startup and setting them to error status"
@@ -140,8 +91,6 @@ def startup_check_outstanding_jobs(engine: sqlalchemy.engine.Engine) -> None:
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[Any, Any]:
     """runs the background poller as the app is running"""
-
-    instrumentator.expose(app)
 
     if "pytest" not in sys.modules:
         # create all the tables
@@ -169,7 +118,6 @@ app.add_middleware(
     session_cookie="chatsession",
 )
 app.add_middleware(GZipMiddleware)
-instrumentator = Instrumentator().instrument(app)
 
 
 def get_session() -> Generator[Session, None, None]:

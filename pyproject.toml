@@ -29,6 +29,12 @@ sqlmodel = "^0.0.14"
 cmarkgfm = "^2024.1.14"
 sqlalchemy-utils = "^0.41.2"
 
+opentelemetry-exporter-otlp = "1.24.0"
+opentelemetry-distro = "0.45b0"
+opentelemetry-instrumentation-fastapi = "0.45b0"
+# because of issues with installing the package automagically https://github.com/open-telemetry/opentelemetry-python-contrib/issues/2053#issuecomment-1928485674
+opentelemetry-instrumentation-aiohttp-server = { git = "https://github.com/open-telemetry/opentelemetry-python-contrib.git", rev = "v0.45b0", subdirectory = "instrumentation/opentelemetry-instrumentation-aiohttp-server" }
+
 [tool.poetry.group.dev.dependencies]
 mypy = "^1.5.0"
 black = "^24.2.0"
