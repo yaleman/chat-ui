@@ -18,9 +18,6 @@ export OTEL_PYTHON_FASTAPI_EXCLUDED_URLS=""
 
 export OTEL_RESOURCE_ATTRIBUTES="service.name=${SERVICE_NAME},service.namespace=${SERVICE_NAMESPACE},deployment.environment=${SERVICE_ENVIRONMENT},host.name=frontend"
 
-# capture the headers forwarded by ChatUI
-export OTEL_INSTRUMENTATION_HTTP_CAPTURE_HEADERS_SERVER_REQUEST="X-ChatUI-*"
-
 poetry run opentelemetry-instrument \
 		--logs_exporter console \
 		python -m llama_cpp.server \
