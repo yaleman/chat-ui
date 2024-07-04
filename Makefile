@@ -17,7 +17,7 @@ serve_docs:
 .PHONY: run
 run: ## Run the chat-ui server in poetry
 run:
-	poetry run chat-ui --reload
+	poetry run ./entrypoint.sh
 
 .PHONY: docker/build
 docker/build: ## Build the chat-ui docker container
@@ -40,7 +40,10 @@ docker: docker/build
 .PHONY: llama/local
 llama/local: ## Run the llama server locally
 llama/local:
-	poetry run python -m llama_cpp.server \
+	poetry run opentelemetry-instrument \
+		--logs_exporter console \
+		--metrics_exporter console \
+		python -m llama_cpp.server \
 		--model "$(MODEL_PATH)" \
 		--chat_format "mistral-instruct" \
 		--port 9196 \
