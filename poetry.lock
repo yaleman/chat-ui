@@ -1958,6 +1958,67 @@ opentelemetry-util-http = "0.45b0"
 instruments = ["fastapi (>=0.58,<1.0)"]
 
 [[package]]
+name = "opentelemetry-instrumentation-httpx"
+version = "0.45b0"
+description = "OpenTelemetry HTTPX Instrumentation"
+optional = false
+python-versions = ">=3.8"
+files = [
+    {file = "opentelemetry_instrumentation_httpx-0.45b0-py3-none-any.whl", hash = "sha256:9cfe4061cd090652d4854ba95668b7fd1c258ab8e95b2c4129df66470a68c225"},
+    {file = "opentelemetry_instrumentation_httpx-0.45b0.tar.gz", hash = "sha256:2e9913ca4c568767cf7bb5facab4d22e1dc65ea01ad0b6b6f77b5fcee136fb1d"},
+]
+
+[package.dependencies]
+opentelemetry-api = ">=1.12,<2.0"
+opentelemetry-instrumentation = "0.45b0"
+opentelemetry-semantic-conventions = "0.45b0"
+opentelemetry-util-http = "0.45b0"
+
+[package.extras]
+instruments = ["httpx (>=0.18.0)"]
+
+[[package]]
+name = "opentelemetry-instrumentation-requests"
+version = "0.45b0"
+description = "OpenTelemetry requests instrumentation"
+optional = false
+python-versions = ">=3.8"
+files = [
+    {file = "opentelemetry_instrumentation_requests-0.45b0-py3-none-any.whl", hash = "sha256:275851d04de518507b0411b98524602101b228b72e61f39dc627c0421ff2a81f"},
+    {file = "opentelemetry_instrumentation_requests-0.45b0.tar.gz", hash = "sha256:6bf1359284105ab50fa7465ea6c60b4a62c699408cb0260af3ac8895e8a7451a"},
+]
+
+[package.dependencies]
+opentelemetry-api = ">=1.12,<2.0"
+opentelemetry-instrumentation = "0.45b0"
+opentelemetry-semantic-conventions = "0.45b0"
+opentelemetry-util-http = "0.45b0"
+
+[package.extras]
+instruments = ["requests (>=2.0,<3.0)"]
+
+[[package]]
+name = "opentelemetry-instrumentation-sqlalchemy"
+version = "0.45b0"
+description = "OpenTelemetry SQLAlchemy instrumentation"
+optional = false
+python-versions = ">=3.8"
+files = [
+    {file = "opentelemetry_instrumentation_sqlalchemy-0.45b0-py3-none-any.whl", hash = "sha256:4cea41d92cabb16a0d02755049ceefa9381165226d4be77d73301fbd0e9aa73f"},
+    {file = "opentelemetry_instrumentation_sqlalchemy-0.45b0.tar.gz", hash = "sha256:1141865207ea5d8314a1e44033a24f8921027470b296386a535dd50a2eb73aec"},
+]
+
+[package.dependencies]
+opentelemetry-api = ">=1.12,<2.0"
+opentelemetry-instrumentation = "0.45b0"
+opentelemetry-semantic-conventions = "0.45b0"
+packaging = ">=21.0"
+wrapt = ">=1.11.2"
+
+[package.extras]
+instruments = ["sqlalchemy"]
+
+[[package]]
 name = "opentelemetry-proto"
 version = "1.24.0"
 description = "OpenTelemetry Python Proto"
@@ -3363,4 +3424,4 @@ testing = ["coverage (>=5.0.3)", "zope.event", "zope.testing"]
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.10"
-content-hash = "9fe5a09876bc5298bc25b4efc79f896a1a8e4a13f2096cc68bcba1573720e548"
+content-hash = "4283030ddf8a882bc21707cfa70e2ea6b9a312db3b6ce1df9d4580bb1b39666c"

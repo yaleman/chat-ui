@@ -13,3 +13,4 @@ node_modules/
 htmlcov/
 .coverage
 .dockerenv
+chatui.sqlite3
