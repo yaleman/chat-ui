@@ -7,6 +7,8 @@ from uuid import UUID
 from pydantic import AfterValidator, BaseModel, ConfigDict
 from sqlmodel import SQLModel
 
+from opentelemetry.trace.span import StatusCode
+
 
 class JobStatus(StrEnum):
     Created = "created"
@@ -14,6 +16,15 @@ class JobStatus(StrEnum):
     Error = "error"
     Complete = "complete"
     Hidden = "hidden"
+
+    def to_otel_status(self) -> StatusCode:
+        if self in [JobStatus.Created, JobStatus.Running, JobStatus.Hidden]:
+            return StatusCode.UNSET
+        if self == JobStatus.Error:
+            return StatusCode.ERROR
+        if self == JobStatus.Complete:
+            return StatusCode.OK
+        raise ValueError(f"Invalid job status {self}")
 
 
 class RequestType(StrEnum):

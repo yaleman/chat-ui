@@ -17,12 +17,18 @@ from chat_ui.db import Jobs
 from chat_ui.models import JobStatus, LogMessages
 
 
+from opentelemetry import trace
+
+
+@trace.get_tracer(__name__).start_as_current_span("get_client_ip")
 def get_client_ip(request: Union[Request, WebSocket]) -> str:
     """gets the client IP and falls back to 'unknown' if it can't"""
     client_ip = "unknown"
     if hasattr(request, "client"):
         if request.client is not None:
             client_ip = request.client.host
+
+    trace.get_current_span().set_attribute("client_ip", client_ip)
     return client_ip
 
 
@@ -75,23 +81,23 @@ def html_from_response(input: str) -> str:
         return input
 
 
+@trace.get_tracer(__name__).start_as_current_span("get_model_name")
 def get_model_name() -> str:
     """pulls the model name from the configured llama-cpp-python instance"""
     base_url = Config().backend_url
     model_url = f"{base_url}/models"
+    res = "unknown_model"
     try:
         response = requests.get(model_url)
         data = response.json()
         if "data" in data:
             data_array = data.get("data", [])
-            if len(data_array) == 0:
-                return "unknown_model"
-            data = data_array[0].get("id", "unknown_model")
-            filename = data.split("/")[-1]
-            if "." in filename:
-                return ".".join(filename.split(".")[:-1])
-        else:
-            return "unknown_model"
+            if len(data_array) != 0:
+                data = data_array[0].get("id", "unknown_model")
+                filename = data.split("/")[-1]
+                if "." in filename:
+                    res = ".".join(filename.split(".")[:-1])
     except Exception as error:
         logger.error("Failed to get model name", error=error)
-    return "unknown_model"
+    trace.get_current_span().set_attribute("model_name", res)
+    return res

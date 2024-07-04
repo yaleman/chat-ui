@@ -33,6 +33,9 @@ from sqlalchemy.exc import NoResultFound
 import sqlalchemy.engine
 from starlette.middleware.gzip import GZipMiddleware
 from starlette.middleware.sessions import SessionMiddleware
+
+from opentelemetry import trace
+
 from chat_ui.backgroundpoller import BackgroundPoller
 from chat_ui.enums import Urls
 from chat_ui.websocket_handlers import (
@@ -162,6 +165,7 @@ async def post_user(
     """post user"""
     newuser = Users(**form.model_dump())
 
+    trace.get_current_span().set_attribute("userid", str(form.userid))
     try:
         existing_user = session.exec(
             select(Users).where(Users.userid == newuser.userid)
@@ -201,6 +205,7 @@ async def create_job(
     """create a new job"""
     client_ip = get_client_ip(request)
 
+    trace.get_current_span().set_attribute("userid", str(job.userid))
     newjob = Jobs.from_newjobform(job, client_ip=client_ip)
 
     session.add(newjob)
@@ -211,6 +216,7 @@ async def create_job(
         src_ip=get_client_ip(request),
         **newjob.model_dump(round_trip=False, warnings=False),
     )
+    trace.get_current_span().set_attribute("job_id", newjob.id)
     return Job.from_jobs(newjob, None)
 
 
@@ -228,6 +234,8 @@ async def jobs(
     - sessionid (a given chat session id)
     - since (a unix timestamp, only return jobs created/updated since this time)
     """
+
+    trace.get_current_span().set_attribute("userid", str(userid))
     query = select(Jobs).where(Jobs.userid == userid)
     if sessionid is not None:
         query = query.where(Jobs.sessionid == sessionid)
@@ -250,6 +258,8 @@ async def job_detail(
     job_id: UUID,
     session: Session = Depends(get_session),
 ) -> JobDetail:
+    trace.get_current_span().set_attribute("userid", str(userid))
+    trace.get_current_span().set_attribute("job_id", str(job_id))
     try:
         query = select(Jobs).where(Jobs.userid == userid, Jobs.id == job_id)
         job = session.exec(query).one()
@@ -349,6 +359,11 @@ async def analyze(
 ) -> JobAnalysis:
     """analyse a prompt"""
 
+    trace.get_current_span().set_attribute("userid", str(analyze_form.userid))
+    trace.get_current_span().set_attribute("job_id", str(analyze_form.jobid))
+    trace.get_current_span().set_attribute(
+        "analysis_type", analyze_form.analysis_type.value
+    )
     # check we have a userid and jobid matching the query
     query = select(Jobs).where(
         Jobs.userid == analyze_form.userid, Jobs.id == analyze_form.jobid
@@ -391,6 +406,7 @@ async def session_new(
     userid: UUID, session: Session = Depends(get_session)
 ) -> ChatUiDBSession:
     # check the userid exists
+    trace.get_current_span().set_attribute("userid", str(userid))
     try:
         session.exec(select(Users).where(Users.userid == userid)).one()
     except NoResultFound:
@@ -410,6 +426,9 @@ async def session_update(
     form: SessionUpdateForm,
     session: Session = Depends(get_session),
 ) -> ChatUiDBSession:
+
+    trace.get_current_span().set_attribute("userid", str(userid))
+    trace.get_current_span().set_attribute("sessionid", str(sessionid))
 
     try:
         chatsession = session.exec(
@@ -439,6 +458,8 @@ async def get_user_sessions(
     userid: UUID, create: bool = True, session: Session = Depends(get_session)
 ) -> Sequence[ChatUiDBSession]:
     # check the user exists first
+
+    trace.get_current_span().set_attribute("userid", str(userid))
     try:
         session.exec(select(Users).where(Users.userid == userid)).one()
     except NoResultFound:
@@ -474,6 +495,10 @@ async def analyses(
 
     """
 
+    if userid is not None:
+        trace.get_current_span().set_attribute("userid", str(userid))
+    if analysisid is not None:
+        trace.get_current_span().set_attribute("analysisid", str(analysisid))
     query = select(JobAnalysis)
     if userid is not None:
         query = query.where(JobAnalysis.userid == userid)
@@ -504,7 +529,8 @@ async def admin_sessions(
 
     """
     config = Config()
-
+    if userid is not None:
+        trace.get_current_span().set_attribute("userid", str(userid))
     if config.admin_password is None:
         raise HTTPException(500, "Admin password not available")
 
@@ -536,6 +562,11 @@ async def admin_jobs(
     """
     config = Config()
 
+    if userid is not None:
+        trace.get_current_span().set_attribute("userid", str(userid))
+    if sessionid is not None:
+        trace.get_current_span().set_attribute("sessionid", str(sessionid))
+
     if config.admin_password is None:
         raise HTTPException(500, "Admin password not available")
 
@@ -565,6 +596,9 @@ async def admin_users(
     """
     config = Config()
 
+    if userid is not None:
+        trace.get_current_span().set_attribute("userid", str(userid))
+
     if config.admin_password is None:
         raise HTTPException(500, "Admin password not available")
 
@@ -591,6 +625,10 @@ async def admin_analyses(
 
 
     """
+    if userid is not None:
+        trace.get_current_span().set_attribute("userid", str(userid))
+    if analysisid is not None:
+        trace.get_current_span().set_attribute("analysisid", str(analysisid))
     config = Config()
 
     if config.admin_password is None:

@@ -26,6 +26,8 @@ from openai.types.chat import (
     ChatCompletionAssistantMessageParam,
 )
 
+from opentelemetry import trace
+
 
 class BackgroundJob(BaseModel):
     id: UUID = Field(default_factory=uuid4)
@@ -148,6 +150,7 @@ class BackgroundPoller(threading.Thread):
             total_history_tokens = sum([t[1] for t in history_tokens])
         return (job, history_tokens, total_history_tokens)
 
+    @trace.get_tracer(__name__).start_as_current_span("handle_job")
     async def handle_job(self, job: BackgroundJob) -> Jobs:
         """handles a prompt job"""
         start_time = datetime.now(UTC).timestamp()
@@ -164,6 +167,7 @@ class BackgroundPoller(threading.Thread):
             history_tokens=history_tokens,
             total_history_tokens=total_history_tokens,
         )
+        trace.get_current_span().set_attribute("job_id", job.id.hex)
 
         completion = await client.chat.completions.create(
             model=self.model_name,
@@ -193,6 +197,9 @@ class BackgroundPoller(threading.Thread):
             default=str,
         )
 
+        trace.get_current_span().set_attribute("job_runtime", job.runtime)
+        trace.get_current_span().set_attributes(usage)
+
         # so it's slightly easier to parse in the logs
         logger.info(
             LogMessages.JobMetadata,
@@ -202,6 +209,9 @@ class BackgroundPoller(threading.Thread):
         )
 
         job.status = JobStatus.Complete.value
+
+        trace.get_current_span().set_status(JobStatus.Complete.to_otel_status())
+
         logger.info(LogMessages.JobCompleted, **job.model_dump(exclude={"history"}))
         return Jobs.from_backgroundjob(job)
 
@@ -222,6 +232,7 @@ class BackgroundPoller(threading.Thread):
                 id=backgroundjob.id,
             )
 
+    @trace.get_tracer(__name__).start_as_current_span("process_prompt")
     def process_prompt(self, job: Jobs, session: Session) -> None:
         """handle the prompt processing"""
         # update the job to say we're doing the thing
@@ -257,6 +268,7 @@ class BackgroundPoller(threading.Thread):
             session.expire_all()
             job = session.exec(select(Jobs).where(Jobs.id == job.id)).one()
             job.status = JobStatus.Error.value
+            trace.get_current_span().set_status(JobStatus.Error.to_otel_status())
             if "Connection error" in str(error):
                 logger.error(
                     "Failed to connect to backend!",
