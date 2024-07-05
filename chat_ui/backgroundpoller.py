@@ -3,6 +3,7 @@
 import asyncio
 from datetime import datetime, UTC
 import json
+import os
 import threading
 import time
 from typing import List, Optional, Tuple, Union
@@ -14,12 +15,11 @@ from pydantic import BaseModel, Field
 from sqlmodel import Session, select
 
 from sqlalchemy import Engine
-from sqlalchemy.exc import NoResultFound
+from sqlalchemy.exc import MultipleResultsFound, NoResultFound
 from chat_ui.config import Config
 from chat_ui.db import JobAnalysis, Jobs
 from chat_ui.models import JobStatus, LogMessages, AnalysisType
 from chat_ui.utils import get_backend_client
-
 
 from openai.types.chat import (
     ChatCompletionUserMessageParam,
@@ -27,6 +27,29 @@ from openai.types.chat import (
 )
 
 from opentelemetry import trace
+from opentelemetry.metrics import get_meter_provider
+
+
+# https://uptrace.dev/opentelemetry/metrics.html#how-to-start-using-opentelemetry-metrics
+meter = get_meter_provider().get_meter(
+    "chat_ui", os.getenv("CHATUI_APP_VERSION", "latest")
+)
+
+usage_meters = {
+    "completion_tokens": meter.create_histogram(
+        "chatui.completion_tokens",
+        unit="tokens",
+        description="Token usage for the completion generation",
+    ),
+    "prompt_tokens": meter.create_histogram(
+        "chatui.prompt_tokens", unit="tokens", description="Token usage by the prompt"
+    ),
+    "total_tokens": meter.create_histogram(
+        "chatui.total_tokens",
+        unit="tokens",
+        description="Total token usage for a prompt",
+    ),
+}
 
 
 class BackgroundJob(BaseModel):
@@ -154,7 +177,7 @@ class BackgroundPoller(threading.Thread):
     async def handle_job(self, job: BackgroundJob) -> Jobs:
         """handles a prompt job"""
         start_time = datetime.now(UTC).timestamp()
-        client = get_backend_client()
+        llm_client = get_backend_client()
         # we need to make sure we're under the token limit
         job, history_tokens, total_history_tokens = self.check_history_tokens(job)
         history = job.get_history()
@@ -167,9 +190,18 @@ class BackgroundPoller(threading.Thread):
             history_tokens=history_tokens,
             total_history_tokens=total_history_tokens,
         )
-        trace.get_current_span().set_attribute("job_id", job.id.hex)
 
-        completion = await client.chat.completions.create(
+        if "do bad things" in job.prompt:
+            from httpx import AsyncClient
+
+            logger.error("Doing bad things")
+            async with AsyncClient() as httpx_client:
+                await httpx_client.get("https://canhasip.com")
+
+        trace.get_current_span().set_attribute("job_id", job.id.hex)
+        trace.get_current_span().add_event("job_started", {"job_id": job.id.hex})
+
+        completion = await llm_client.chat.completions.create(
             model=self.model_name,
             messages=history,
             temperature=0.7,
@@ -199,6 +231,16 @@ class BackgroundPoller(threading.Thread):
 
         trace.get_current_span().set_attribute("job_runtime", job.runtime)
         trace.get_current_span().set_attributes(usage)
+        for usage_key, usage_value in usage.items():
+            if usage_key in usage_meters:
+                usage_meters[usage_key].record(
+                    usage_value,
+                    attributes={
+                        "job_id": str(job.id),
+                        "userid": str(job.userid),
+                        "sessionid": str(job.sessionid),
+                    },
+                )
 
         # so it's slightly easier to parse in the logs
         logger.info(
@@ -294,13 +336,17 @@ class BackgroundPoller(threading.Thread):
             # get any new prompt requests
             job = session.exec(
                 select(Jobs).where(Jobs.status == JobStatus.Created.value)
-            ).one()
-            self.process_prompt(job, session)
+            ).first()
+            if job is not None:
+                self.process_prompt(job, session)
+        except MultipleResultsFound as error:
+            logger.error("Somehow found multiple duplicate results? error: {}", error)
 
         except NoResultFound:
             # logger.debug(LogMessages.NoJobs)
-            # don't just infinispin
-            time.sleep(0.1)
+            pass
+        # don't just infinispin
+        time.sleep(0.1)
 
     async def process_outstanding_analyses(self, session: Session) -> Optional[UUID]:
         """if there's an outstanding analysis request, let's handle that

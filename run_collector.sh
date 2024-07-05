@@ -1,5 +1,6 @@
 #!/bin/bash
 
+set -e
 
 docker run --rm \
     -e "SPLUNK_ACCESS_TOKEN=${SPLUNK_ACCESS_TOKEN}" \
