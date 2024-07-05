@@ -1,18 +1,30 @@
 #!/bin/bash
 
-# run_llama_local
-
-export SERVICE_NAME="chatui-llama"
-
+if [ -z "${OTEL_RESOURCE_ATTRIBUTES}" ]; then
+    echo "OTEL_RESOURCE_ATTRIBUTES env var needs to be set!"
+    exit 1
+fi
+if [ -z "${CHATUI_APP_VERSION}" ]; then
+    echo "CHATUI_APP_VERSION env var needs to be set!"
+    exit 1
+fi
+if [ -z "${CHATUI_APP_VERSION}" ]; then
+    echo "CHATUI_APP_VERSION env var needs to be set!"
+    exit 1
+fi
+if [ -z "${SERVICE_NAME}" ]; then
+    export SERVICE_NAME="chatui-llama"
+fi
 if [ -z "${SERVICE_NAMESPACE}" ]; then
-	echo "Set the SERVICE_NAMESPACE environment variable"
-	exit 1
+    echo "SERVICE_NAMESPACE env var needs to be set!"
+    exit 1
 fi
 if [ -z "${SERVICE_ENVIRONMENT}" ]; then
-	echo "Set the SERVICE_ENVIRONMENT environment variable"
-	exit 1
+    echo "SERVICE_ENVIRONMENT env var needs to be set!"
+    exit 1
 fi
 
+echo "All env var checks passed!"
 # reset this from the root environment
 export OTEL_PYTHON_FASTAPI_EXCLUDED_URLS=""
 
