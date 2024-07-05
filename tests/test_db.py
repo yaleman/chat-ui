@@ -4,7 +4,13 @@ from loguru import logger
 
 import pytest
 import sqlmodel
-from chat_ui.db import ChatUiDBSession, JobFeedback, FeedbackSuccess, Jobs
+from chat_ui.db import (
+    ChatUiDBSession,
+    JobFeedback,
+    FeedbackSuccess,
+    Jobs,
+    migrate_database,
+)
 
 from chat_ui import app, get_session, startup_check_outstanding_jobs, user_has_sessions
 from chat_ui.enums import Urls
@@ -111,7 +117,6 @@ def test_success_enum() -> None:
 
 
 def test_migrate_database() -> None:
-    from chat_ui import migrate_database
 
     sqlite_url = "sqlite://"
     engine = sqlmodel.create_engine(
