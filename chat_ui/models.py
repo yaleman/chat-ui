@@ -7,7 +7,7 @@ from uuid import UUID
 from pydantic import AfterValidator, BaseModel, ConfigDict
 from sqlmodel import SQLModel
 
-from opentelemetry.trace.span import StatusCode
+from opentelemetry.trace.status import StatusCode
 
 
 class JobStatus(StrEnum):

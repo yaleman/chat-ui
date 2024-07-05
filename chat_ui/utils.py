@@ -33,7 +33,7 @@ def get_client_ip(request: Union[Request, WebSocket]) -> str:
 
 
 def get_backend_client() -> AsyncOpenAI:
-    """returns the backend client"""
+    """returns the backend client to the LLM API"""
     return AsyncOpenAI(
         api_key=Config().backend_api_key,
         base_url=Config().backend_url,
@@ -50,7 +50,6 @@ def get_waiting_jobs(session: Session) -> Tuple[datetime, int]:
             )
         )
 
-        # logger.debug("get_waiting jobs query: {}", query.params())
         res = session.scalar(query)
         if res is None:
             res = 0
