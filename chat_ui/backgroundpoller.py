@@ -191,12 +191,13 @@ class BackgroundPoller(threading.Thread):
             total_history_tokens=total_history_tokens,
         )
 
-        if "do bad things" in job.prompt:
-            from httpx import AsyncClient
+        if Config().enable_do_bad_things_mode == "1":
+            if "do bad things" in job.prompt:
+                from httpx import AsyncClient
 
-            logger.error("Doing bad things")
-            async with AsyncClient() as httpx_client:
-                await httpx_client.get("https://canhasip.com")
+                logger.error("Doing bad things")
+                async with AsyncClient() as httpx_client:
+                    await httpx_client.get("https://example.com")
 
         trace.get_current_span().set_attribute("job_id", job.id.hex)
         trace.get_current_span().add_event("job_started", {"job_id": job.id.hex})

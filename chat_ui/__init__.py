@@ -95,6 +95,9 @@ def startup_check_outstanding_jobs(engine: sqlalchemy.engine.Engine) -> None:
 async def lifespan(app: FastAPI) -> AsyncGenerator[Any, Any]:
     """runs the background poller as the app is running"""
 
+    if Config().enable_do_bad_things_mode == "1":
+        logger.warning("Do bad things mode is enabled!")
+
     if "pytest" not in sys.modules:
         # create all the tables
         sqlmodel.SQLModel.metadata.create_all(engine)

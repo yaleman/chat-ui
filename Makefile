@@ -40,15 +40,7 @@ docker: docker/build
 .PHONY: llama/local
 llama/local: ## Run the llama server locally
 llama/local:
-	poetry run opentelemetry-instrument \
-		--logs_exporter console \
-		--metrics_exporter console \
-		python -m llama_cpp.server \
-		--model "$(MODEL_PATH)" \
-		--chat_format "mistral-instruct" \
-		--port 9196 \
-		--n_gpu_layers -1 \
-		--interrupt_requests False
+	./run_llama_local.sh
 
 .PHONY: llama/docker
 llama: ## Run the llama server in docker
