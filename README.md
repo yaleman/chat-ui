@@ -41,3 +41,7 @@ graph TD;
   Job -->|jobid| Metadata
   User -->|userid| Feedback
 ```
+
+## Do bad things mode
+
+This is a test mode that when "do bad things" is included in a prompt, it'll make a HTTP GET request to `https://example.com` to show this traffic in the trace.

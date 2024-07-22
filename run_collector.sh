@@ -1,6 +1,11 @@
 #!/bin/bash
 
+# Runs the Splunk OpenTelemetry collector in docker
+
 set -e
+
+# pinning the version to v0.103.0 because they changed the "localhost bind" behavior in v0.104.0
+COLLECTOR_VERSION="0.103.0"
 
 docker run --rm \
     -e "SPLUNK_ACCESS_TOKEN=${SPLUNK_ACCESS_TOKEN}" \
@@ -15,4 +20,4 @@ docker run --rm \
     -p 9080:9080 \
     -p 9411:9411 \
     -p 9943:9943 \
-    --name otelcol quay.io/signalfx/splunk-otel-collector:latest
+    --name otelcol "quay.io/signalfx/splunk-otel-collector:${COLLECTOR_VERSION}"

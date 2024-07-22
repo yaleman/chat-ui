@@ -22,6 +22,8 @@ if [ -z "${SERVICE_ENVIRONMENT}" ]; then
 fi
 echo "All env var checks passed!"
 
+OTEL_SERVICE_NAME="${SERVICE_NAME}"
+export OTEL_SERVICE_NAME
+
 opentelemetry-instrument \
-    --logs_exporter console \
     uvicorn chat_ui:app --host "0.0.0.0" --port 9195 --forwarded-allow-ips '*'

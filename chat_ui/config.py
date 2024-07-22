@@ -3,6 +3,7 @@ import logging
 import os
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple, Type
+from pydantic import Field
 from pydantic_settings import (
     BaseSettings,
     PydanticBaseSettingsSource,
@@ -68,6 +69,8 @@ class Config(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="CHATUI_")
 
     admin_password: Optional[str] = None
+
+    enable_do_bad_things_mode: str = Field("false", help="Enable bad things mode")
 
     @classmethod
     def settings_customise_sources(
