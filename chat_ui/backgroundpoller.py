@@ -178,7 +178,6 @@ class BackgroundPoller(threading.Thread):
         """handles a prompt job"""
         start_time = datetime.now(UTC).timestamp()
         llm_client = get_backend_client()
-        # we need to make sure we're under the token limit
         job, history_tokens, total_history_tokens = self.check_history_tokens(job)
         history = job.get_history()
         logger.debug(
@@ -199,9 +198,6 @@ class BackgroundPoller(threading.Thread):
                 async with AsyncClient() as httpx_client:
                     await httpx_client.get("https://example.com")
 
-        trace.get_current_span().set_attribute("job_id", job.id.hex)
-        trace.get_current_span().add_event("job_started", {"job_id": job.id.hex})
-
         completion = await llm_client.chat.completions.create(
             model=self.model_name,
             messages=history,
@@ -219,6 +215,9 @@ class BackgroundPoller(threading.Thread):
             usage = completion.usage.model_dump()
         else:
             usage = {}
+
+        trace.get_current_span().set_attribute("job_id", job.id.hex)
+        trace.get_current_span().add_event("job_started", {"job_id": job.id.hex})
 
         job.runtime = datetime.now(UTC).timestamp() - start_time
         job.response = completion.choices[0].message.content
