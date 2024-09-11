@@ -20,34 +20,24 @@ class JsonConfigSettingsSource(PydanticBaseSettingsSource):
     at the project's root.
     """
 
-    def get_field_value(
-        self, field: FieldInfo, field_name: str
-    ) -> Tuple[Any, str, bool]:
+    def get_field_value(self, field: FieldInfo, field_name: str) -> Tuple[Any, str, bool]:
         try:
-            file_content_json = json.load(
-                Path(CONFIG_FILENAME).expanduser().open(encoding="utf-8")
-            )
+            file_content_json = json.load(Path(CONFIG_FILENAME).expanduser().open(encoding="utf-8"))
             field_value = file_content_json.get(field_name)
             return field_value, field_name, False
         except Exception as error:
             logging.debug("Failed to load config file %s: %s", CONFIG_FILENAME, error)
         return (None, "", False)
 
-    def prepare_field_value(
-        self, field_name: str, field: FieldInfo, value: Any, value_is_complex: bool
-    ) -> Any:
+    def prepare_field_value(self, field_name: str, field: FieldInfo, value: Any, value_is_complex: bool) -> Any:
         return value
 
     def __call__(self) -> Dict[str, Any]:
         d: Dict[str, Any] = {}
 
         for field_name, field in self.settings_cls.model_fields.items():
-            field_value, field_key, value_is_complex = self.get_field_value(
-                field, field_name
-            )
-            field_value = self.prepare_field_value(
-                field_name, field, field_value, value_is_complex
-            )
+            field_value, field_key, value_is_complex = self.get_field_value(field, field_name)
+            field_value = self.prepare_field_value(field_name, field, field_value, value_is_complex)
             if field_value is not None:
                 d[field_key] = field_value
 
@@ -70,7 +60,7 @@ class Config(BaseSettings):
 
     admin_password: Optional[str] = None
 
-    enable_do_bad_things_mode: str = Field("false", help="Enable bad things mode")
+    enable_do_bad_things_mode: str = Field("false", description="Enable bad things mode")
 
     @classmethod
     def settings_customise_sources(

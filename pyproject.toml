@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "chat-ui"
-version = "0.1.1"
+version = "0.2.0"
 description = "A Chat UI for interacting with an LLM."
 authors = ["James Hodgkinson <james@terminaloutcomes.com>"]
 readme = "README.md"
