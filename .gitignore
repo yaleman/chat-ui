@@ -1,10 +1,16 @@
 **/__pycache__/*
+site/*
 venv/
 .vscode/
 .DS_Store
-config.py
 *.egg-info/
 dist/
 .env
 build/
 history.json
+node_modules/
+.envrc
+htmlcov/
+.coverage
+.dockerenv
+chatui.sqlite3

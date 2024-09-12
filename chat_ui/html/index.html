@@ -1,57 +1,427 @@
 <!DOCTYPE html>
-<html lang="en">
-    <head>
-        <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha3/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-KK94CHFLLe+nY2dmCWGMq91rCGa5gtU4mk92HdvYe+M/SXH301p5ILy+dN9+nJOZ" crossorigin="anonymous">
-        <title>Chat UI</title>
-        <link rel="stylesheet" href="/css/css.css" />
-    </head>
-    <body>
-        <main>
-            <nav class="navbar navbar-expand navbar-dark bg-dark" aria-label="Second navbar example">
-                <div class="container-fluid">
-                  <a class="navbar-brand" href="#">Chat UI</a>
-                  <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarsExample02" aria-controls="navbarsExample02" aria-expanded="false" aria-label="Toggle navigation">
-                    <span class="navbar-toggler-icon"></span>
-                  </button>
 
-                  <!-- <div class="collapse navbar-collapse" id="navbarsExample02">
-                    <ul class="navbar-nav me-auto">
-                      <li class="nav-item">
-                        <a class="nav-link active" aria-current="page" href="#">Home</a>
-                      </li>
-                      <li class="nav-item">
-                        <a class="nav-link" href="#">Link</a>
+<html lang="en">
+  <head>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+
+    <link rel="icon" href="/img/favicon.png" type="image/png" />
+
+    <!-- bootstrap things for styling-->
+    <link
+      href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha3/dist/css/bootstrap.min.css"
+      rel="stylesheet"
+      integrity="sha384-KK94CHFLLe+nY2dmCWGMq91rCGa5gtU4mk92HdvYe+M/SXH301p5ILy+dN9+nJOZ"
+      crossorigin="anonymous">
+    <!-- allows for the bootstrap UI things-->
+    <script
+      src="https://cdn.jsdelivr.net/npm/bootstrap@5.0.2/dist/js/bootstrap.bundle.min.js"
+      integrity="sha384-MrcW6ZMFYlzcLA8Nl+NtUVF0sA7MsXsP1UyJoMp4YLEuNSfAP+JcXn/tWtIaxVXM"
+      crossorigin="anonymous"></script>
+
+    <title>Wombat Chat</title>
+    <link rel="stylesheet" href="/css/css.css" />
+    <script type="importmap">
+      {
+        "imports": {
+          "vue": "https://unpkg.com/vue@3/dist/vue.esm-browser.js"
+        }
+      }
+    </script>
+    <script
+      src="/js/vue.global.js"
+      integrity="sha384-eT6nTqOVNpRymmGfb9K1rXGZc/sD2f3wtMjCDCeXr9816Q6AvDzXHF07liyvo/Os"
+      crossorigin="anonymous"></script>
+
+  </head>
+  <body>
+    <main id="app">
+      <div id="app">
+        <nav class="navbar navbar-expand navbar-dark bg-dark"
+          aria-label="Second navbar example">
+          <div class="container-fluid">
+            <a class="navbar-brand" href="#">Chat UI</a>
+            <button class="navbar-toggler" type="button"
+              data-bs-toggle="collapse"
+              data-bs-target="#navbarsExample02"
+              aria-controls="navbarsExample02"
+              aria-expanded="false" aria-label="Toggle navigation">
+              <span class="navbar-toggler-icon"></span>
+            </button>
+
+            <form class="d-flex" style="width:50%">
+              <span class="navbar-text">Session name:&nbsp;</span>
+              <input type="text"
+                name="sessionName" class="form-control"
+                v-model.trim="currentSessionName" style="width:50%" />
+            </form>
+
+            <ul class="nav justify-content-end">
+              <li class="nav-item px-1" v-if="waitingJobs > 0">
+                <button type="button" disabled class="btn btn-light">Jobs in
+                  queue: {{waitingJobs}}</button>
+              </li>
+              <li class="nav-item px-1">
+                <button type="button" class="btn btn-light"
+                  @click="showSessionModal()"
+                  id="showSessionModal">
+                  <!-- data-bs-toggle="modal"
+                data-bs-target="#sessionModal"  -->
+                  Sessions
+                </button>
+              </li>
+              <li class="nav-item px-1">
+                <button type="button" class="btn btn-light"
+                  @click="newSession()">
+                  New Chat Session
+                </button>
+              </li>
+              <li class="nav-item px-1">
+                <button type="button" class="btn btn-light"
+                  data-bs-toggle="modal"
+                  data-bs-target="#debugModal" id="showDebugModal">
+                  Debug
+                </button>
+              </li>
+
+            </ul>
+          </div>
+        </nav>
+        <div class="modal"
+          id="sessionModal" tabindex="-1">
+
+          <div
+            class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+            <div class="modal-content">
+              <div class="modal-header">
+                <h5 class="modal-title">Chat Sessions</h5>
+                <button type="button" class="btn-close"
+                  data-bs-dismiss="modal" id="closeModal"
+                  aria-label="Close"></button>
+              </div>
+              <div class="modal-body">
+                <div class="row py-4">
+                  <div class="col-12">
+
+                    <ul>
+                      <li v-for="session in sessions" :key="session.id">
+                        <a href="#" @click="selectSession(session.sessionid)">
+                          {{session.name}} <span
+                            v-if="session.updated != null">-
+                            {{session.updated}}</span></a>
                       </li>
                     </ul>
-                    <form role="search">
-                      <input class="form-control" type="search" placeholder="Search" aria-label="Search">
-                    </form>
-                  </div> -->
+                  </div>
                 </div>
-              </nav>
-        <div class="container-fluid bg-body">
-            <div>
-                <div id="chat" hx-trigger="load" hx-get="/history"></div>
+
+              </div>
+
             </div>
-        <div class="navbar fixed-bottom navbar-expand-sm navbar">
-            <form method="POST" hx-post="/chat" hx-target="#chat" >
-                <div class="input-group m-3">
-                <span class="input-group-text dark" id="chat-label" for="message">Chat </span>
-                    <input type="text" class="form-control"
-                    name="message"
-                    id="message"
-                    autofocus
-                    aria aria-labelled-by="chat-label"
-                    placeholder="Enter your message here" value=" " />
-                    <button type="submit" class="btn btn-success">Go<img class="htmx-indicator" src="/img/spinner.gif"></button>
-                    <button type="button" class='btn btn-secondary' hx-post="/clear" hx-target="#chat">Clear History</button>
-                </div>
-                </form>
+          </div>
         </div>
-        </body>
+
+        <div class="modal"
+          id="debugModal" tabindex="-1">
+          <form @submit.prevent="saveUserDetails">
+            <div
+              class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+              <div class="modal-content">
+                <div class="modal-header">
+                  <h5 class="modal-title">Debug Details</h5>
+                  <button type="button" class="btn-close"
+                    data-bs-dismiss="modal" id="closeModal"
+                    aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                  <div class="row py-4">
+                    <div class="col-12">
+
+                      <p>User ID: {{userid}}</p>
+                      <p>Session ID: {{currentSessionid}}</p>
+                      <p>System-wide pending jobs: {{ waitingJobs }}</p>
+                    </li>
+                  </div>
+                </div>
+
+                <div class="row">
+                  <div class="col-6" v-if="!isPolling">
+                    <button type="button" class="btn btn-success px-2"
+                      @click="startPoller"
+                      data-id="startBackgroundPolling" v-if="!isPolling">
+                      Start Job Polling
+                    </button>
+                  </div>
+
+                  <div class="col-6" v-if="isPolling">
+                    <button type="button" class="btn btn-danger px-2"
+                      @click="stopPoller"
+                      data-id="stopBackgroundPolling">
+                      Stop Job Polling
+                    </div>
+
+                    <div class="alert alert-danger"
+                      v-if="hasUserModalErrors">{{
+                      userModalErrors }}</div> <div
+                      class="alert alert-danger"
+                      v-if="hasUserModalErrors">{{
+                      userModalErrors }}</div>
+
+                  </div>
+                </div>
+                <div class="modal-footer">
+                </div>
+              </div>
+            </div>
+          </form>
+        </div>
+        <!-- end of the modal -->
+
+        <!-- prompt details modal -->
+
+        <div class="modal"
+          data-bs-keyboard="true"
+          id="showPromptDetails" tabindex="-1">
+          <!-- <form @submit.prevent="saveUserDetails"> -->
+          <div
+            class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+            <div class="modal-content">
+              <div class="modal-header">
+                <h5 class="modal-title">Prompt Feedback</h5>
+                <button type="button" class="btn-close"
+                  id="closeModalDetails"
+                  @click="closePromptDetails()"
+                  aria-label="Close"></button>
+              </div>
+
+              <div class="modal-body" v-if="this.selectedJob != null">
+
+                <form @submit.prevent="sendPromptFeedback">
+                  <div class="row">
+                    <div class="col-12 px-2">Did you succeed at your task?
+                      <br />
+                      <select name="success" id="success" size="3"
+                        class="form-select form-select-lg mb-3"
+                        aria-label=".form-select-lg example"
+                        v-model="promptFeedbackResult">
+                        <option value="1">Yes!</option>
+                        <option value="0">Maybe?</option>
+                        <option value="-1">No</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div class="row">
+                    <div class="col-12 px-2">
+                      <label for="comments"
+                        class="form-label">Comments</label>
+
+                      <input type="text" id="comments" name="comments"
+                        class="form-control"
+                        v-model="promptFeedbackComments" />
+                    </div>
+                  </div>
+
+                  <div class="row py-4">
+                    <div class="col-12 px-2">
+                      <button type="submit" class="btn btn-primary"
+                        :class="feedbackButtonClass">Send
+                        Results</button>
+                    </div>
+                  </div>
+                </form>
+                <div class="row">
+                  <h6>Stats</h6>
+                  <div class="col-12" v-if="this.selectedJob != null">
+                    <ul
+                      style="list-style-type: none; padding-left: 0px;">
+                      <li>Chat session ID:
+                        {{this.jobs[this.selectedJob].sessionid}}</li>
+                      <li>Request type:
+                        {{this.jobs[this.selectedJob].request_type}}</li>
+                      <li class="text-muted"
+                        v-if="this.jobs[this.selectedJob].created">
+                        Created: {{this.jobs[this.selectedJob].created}}
+                      </li>
+                      <li class="text-muted"
+                        v-if="this.jobs[this.selectedJob].updated">
+                        Last Update: {{this.jobs[this.selectedJob].updated}}
+                      </li>
+                      <li
+                        :class="colorFromStatus(this.jobs[this.selectedJob].status) ">Status:
+                        {{ this.jobs[this.selectedJob].status }}
+                      </li>
+                      <li
+                        v-for="meta in getUsage(this.jobs[this.selectedJob])"
+                        :key="meta">
+                        {{meta}}
+                      </li>
+                      <li> runtime:
+                        {{this.jobs[this.selectedJob].runtime.toFixed(3)}}
+                        seconds</li>
+                    </ul>
+                  </div>
+                </div>
+
+                <!--
+                <div class="row">
+                  <div class="col-12">Nothing here yet</div>
+                </div> -->
+              </div>
+              <div class="modal-footer">
+                <div
+                  style="cursor: pointer; width: 30px; height: 30px; border: 1px solid black; background-color: white; text-align: center"
+                  class="float-end mx-2"
+                  id="{{selectedJob}}delete"
+                  @click="deleteJob(this.jobs[selectedJob])">
+                  <img src="/img/trash.svg"
+                    title="Delete this task"
+                    style="cursor: pointer; width: 20px; height: 20px;" />
+                </div>
+                <div
+                  style="cursor: pointer; width: 30px; height: 30px; border: 1px solid black; background-color: white; text-align: center"
+                  class="float-end"
+                  id="refresh_job_{{selectedJob}}"
+                  @click="getJobData(this.jobs[selectedJob])">
+                  <img src="/img/arrow-clockwise.svg"
+                    title="Refresh this task"
+                    style="cursor: pointer; width: 20px; height: 20px;" />
+                </div>
+              </div>
+            </div>
+          </div>
+          <!-- </form> -->
+        </div>
+        <!-- end prompt details modal -->
+
+        <div class="container-fluid p-4">
+          <form name="prompt" id="prompt" @submit.prevent="sendPrompt">
+            <div class="row">
+              <div class="col-6">
+
+                <div class="mb-3">
+                  <label for="name" class="form-label">Your Name</label>
+                  <input type="text" id="name"
+                    :class="{'is-invalid': !hasName}"
+                    class="form-control form-control-lg"
+                    v-model.lazy="name"
+                    placeholder="Your name">
+                  <div class="invalid-feedback" v-if="!hasName">
+                    Please enter your name.
+                  </div>
+                </div>
+
+                <div class="mb-3">
+                  <label for="use_case" class="form-label">Use Case</label>
+                  <select class="form-select form-select-lg mb-3"
+                    id="use_case"
+                    v-model="useCase"
+                    aria-label=".form-select-lg example">
+                    <option value="plain">Plain Requests</option>
+                    <option value="dos">Denial of Service</option>
+                    <option value="prompt_injection">Prompt
+                      Injection</option>
+                    <option value="sensitive_disclosure">Sensitive Information
+                      Disclosure</option>
+                    <option value="insecure_output">Insecure Output</option>
+                  </select>
+                </div>
+
+                <div class="mb-3">
+                  <label for="promptText"
+                    class="form-label">Textarea</label>
+                  <textarea class="form-control"
+                    :class="{'is-invalid': !currentPrompt}"
+                    id="promptText" v-model="currentPrompt"></textarea>
+                  <div class="invalid-feedback" v-if="!currentPrompt">
+                    Please enter a message in the textarea.
+                  </div>
+
+                  <div class="mb-3 py-4">
+                    <button type="submit" class="btn btn-primary btn-lg"
+                      style="background-color: #6610f2;"
+                      :disabled="!canSend">
+                      Send message</button>
+                  </div>
+                </div>
+              </form>
+            </div>
+            <div class="col-6" v-if="this.initialLoad"><div
+                style="padding: 1.25rem; border: 0.1rem solid  lightgrey; border-left-width: 0.25rem; border-left-color: #6610f2; border-top-left-radius: 0.25rem;border-bottom-left-radius: 0.25rem;">
+                Checking for existing prompts...
+              </div>
+            </div>
+            <div class="col-6" v-if="!this.noJobs">
+              <h1>Submitted Prompts</h1>
+
+              <ul style="list-style-type: none">
+                <li v-for="job in getJobList" :key="job.id">
+                  <div class="card">
+                    <div class="card-header py-3">
+
+                      <span v-if="job.prompt">
+                        You: {{job.prompt}}
+                      </span>
+                      <button type="button" v-if="job.response"
+                        class=" btn float-end"
+                        :class="feedbackButtonClassFunc(job.id)"
+                        @click="showPromptDetail(job.id)">Feedback</button>
+                    </div>
+                    <ul class="list-group list-group-flush">
+                      <li class="list-group-item py-3"
+                        v-if="job.response">
+                        <h5>Response</h5>
+                        <div v-html="job.response"></div>
+
+                      </li>
+                      <li class="list-group-item">
+                        <span class="text-muted"
+                          v-if="job.updated">
+                          Created: {{job.created}}
+                        </span>
+                        <span class="text-muted" v-if="job.updated"><br />
+                          Last Update: {{job.updated}}
+                        </span>
+                        <!-- TODO: expose the token usage metadata -->
+                        <br />Request type: {{job.request_type}}
+                        <span v-if="job.runtime"><br />
+                          Runtime: {{Math.round(job.runtime)}} seconds
+                        </span>
+                        <h6 class="mb-2"
+                          :class="colorFromStatus(job.status) ">Status:
+                          {{ job.status }}
+                        </h6>
+                        <div>
+                          <ul
+                            style="list-style-type: none; padding-left: 0px;">
+                            <li v-for="meta in getUsage(job)" :key="meta">
+                              {{meta}}
+                            </li>
+                          </ul>
+                        </div>
+                        <div
+                          id="resubmit_job_{{job.id}}"
+                          @click="resubmitJob(job.id)"
+                          v-if="job.status=='error'">
+                          <div
+                            style="cursor: pointer; height: 2.0em; border: 1px solid black; background-color: #ffc107; text-align: center"
+                            class="my-2 mx-2">
+                            <img src="/img/arrow-up.svg"
+                              title="Re-submit this task"
+                              style="cursor: pointer; width: 20px; height: 20px; margin-top: 4px;" />Try
+                            again
+                          </div>
+
+                        </div>
+                      </li>
+                    </ul>
+                  </div>
+                </li>
+              </ul>
+            </div>
+          </div>
+
+        </div>
+      </body>
     </main>
-    <script src="https://unpkg.com/htmx.org@1.9.0" integrity="sha384-aOxz9UdWG0yBiyrTwPeMibmaoq07/d3a96GCbb9x60f3mOt5zwkjdbcHFnKH8qls" crossorigin="anonymous"></script>
-    <script type="javascript">
-        htmx.logAll();
-    </script>
-</html>
+
+    <script src="/js/chatui.js"></script>
+  </html>

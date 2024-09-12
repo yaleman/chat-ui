@@ -1,0 +1,22 @@
+{
+  "name": "chat-ui",
+  "version": "0.1.0",
+  "description": "Chat UI",
+  "main": "chat_ui/js/chatui.js",
+  "directories": {
+    "doc": "docs",
+    "test": "tests"
+  },
+  "scripts": {
+    "test": "eslint chat_ui/js/*.js"
+  },
+  "author": "James Hodgkinson",
+  "license": "MIT",
+  "devDependencies": {
+    "@eslint/js": "^9.2.0",
+    "bootstrap": "^5.3.0",
+    "eslint": "^8.57.0",
+    "eslint-plugin-vue": "^9.25.0",
+    "globals": "^15.1.0"
+  }
+}

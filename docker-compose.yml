@@ -1,0 +1,45 @@
+---
+version: "3"
+
+services:
+  chatui:
+    build:
+      context: .
+    container_name: "chat-ui"
+    read_only: true
+    security_opt:
+      - "no-new-privileges:true"
+    ports:
+      - "9195:9195"
+    environment:
+      - "CHATUI_BACKEND_URL=http://llama:8000/v1"
+    env_file:
+      - .dockerenv
+    healthcheck:
+      test: ["CMD", "python", "-m", "chat_ui.healthcheck"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    volumes:
+    - type: bind
+      source: $HOME/.cache/chatui.sqlite3
+      target: /db/chatui.sqlite3
+  # nosemgrep:yaml.docker-compose.security.writable-filesystem-service.writable-filesystem-service
+  llama:
+    image: "ghcr.io/abetlen/llama-cpp-python:latest"
+    container_name: "llama"
+    read_only: false
+    security_opt:
+      - "no-new-privileges:true"
+    ports:
+      - "9196:8000"
+    environment:
+      - "MODEL=/models/model.gguf"
+
+      # valid formats: ['llama-2', 'alpaca', 'qwen', 'vicuna', 'oasst_llama', 'baichuan-2', 'baichuan', 'openbuddy', 'redpajama-incite', 'snoozy', 'phind', 'intel', 'open-orca', 'mistrallite', 'zephyr', 'pygmalion', 'chatml', 'mistral-instruct', 'chatglm3', 'openchat', 'saiga', 'functionary', 'functionary-v2', 'functionary-v1', 'chatml-function-calling']
+      - "CHAT_FORMAT=mistral-instruct"
+      - "INTERRUPT_REQUESTS=false"
+    volumes:
+    - type: bind
+      source: $HOME/.cache/lm-studio/models/TheBloke/Mixtral-8x7B-Instruct-v0.1-GGUF/mixtral-8x7b-instruct-v0.1.Q4_0.gguf
+      target: /models/model.gguf
