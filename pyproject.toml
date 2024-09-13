@@ -41,7 +41,7 @@ opentelemetry-instrumentation-httpx = "0.45b0"
 [tool.poetry.group.dev.dependencies]
 mypy = "^1.5.0"
 black = "^24.2.0"
-ruff = "^0.4.1"
+ruff = "^0.6.5"
 pytest = "^8.0.0"
 httpx = "^0.24.1"
 mkdocs = { version = "^1.5.3", extras = ["python"] }
