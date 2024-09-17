@@ -1,4 +1,4 @@
-""" chat emulator using fastapi """
+"""chat emulator using fastapi"""
 
 from contextlib import asynccontextmanager
 from datetime import datetime, UTC
@@ -75,13 +75,9 @@ engine = sqlmodel.create_engine(sqlite_url, echo=False, connect_args=connect_arg
 
 
 def startup_check_outstanding_jobs(engine: sqlalchemy.engine.Engine) -> None:
-    logger.info(
-        "Checking for outstanding jobs on startup and setting them to error status"
-    )
+    logger.info("Checking for outstanding jobs on startup and setting them to error status")
     with Session(engine) as session:
-        jobs = session.exec(
-            select(Jobs).where(Jobs.status == JobStatus.Running.value)
-        ).all()
+        jobs = session.exec(select(Jobs).where(Jobs.status == JobStatus.Running.value)).all()
         for job in jobs:
             logger.warning("Job was running, setting to error", job_id=job.id)
             job.status = JobStatus.Error.value
@@ -170,9 +166,7 @@ async def post_user(
 
     trace.get_current_span().set_attribute("userid", str(form.userid))
     try:
-        existing_user = session.exec(
-            select(Users).where(Users.userid == newuser.userid)
-        ).one()
+        existing_user = session.exec(select(Users).where(Users.userid == newuser.userid)).one()
         existing_user.name = newuser.name
         existing_user.updated = datetime.now(UTC)
         session.add(existing_user)
@@ -193,9 +187,7 @@ async def post_user(
         created=newuser.created,
         updated=newuser.updated,
     )
-    logger.info(
-        LogMessages.UserUpdate, src_ip=get_client_ip(request), **res.model_dump()
-    )
+    logger.info(LogMessages.UserUpdate, src_ip=get_client_ip(request), **res.model_dump())
     return res
 
 
@@ -245,10 +237,7 @@ async def jobs(
     if since is not None:
         query = query.where(
             or_(
-                (
-                    Jobs.updated is not None
-                    and Jobs.updated >= datetime.fromtimestamp(since, UTC)
-                ),
+                (Jobs.updated is not None and Jobs.updated >= datetime.fromtimestamp(since, UTC)),
                 Jobs.created >= datetime.fromtimestamp(since, UTC),
             )
         )
@@ -296,17 +285,12 @@ async def websocket_endpoint(
             try:
                 raw_msg = "<empty>"
                 raw_msg = await websocket.receive_json()
-                response = WebSocketResponse(
-                    message=WebSocketMessageType.Error.value, payload="unknown message"
-                )
+                response = WebSocketResponse(message=WebSocketMessageType.Error.value, payload="unknown message")
                 data = WebSocketMessage.model_validate(raw_msg)
             except WebSocketDisconnect:
-                logger.debug(
-                    LogMessages.WebsocketDisconnected, src_ip=get_client_ip(websocket)
-                )
+                logger.debug(LogMessages.WebsocketDisconnected, src_ip=get_client_ip(websocket))
                 return
             except Exception as error:
-
                 logger.error(
                     LogMessages.WebsocketError.value,
                     error=error,
@@ -330,19 +314,14 @@ async def websocket_endpoint(
         logger.debug(LogMessages.WebsocketDisconnected, src_ip=get_client_ip(websocket))
         return
     except RuntimeError as error:
-        if (
-            "Unexpected ASGI message 'websocket.send', after sending 'websocket.close'"
-            in str(error)
-        ):
+        if "Unexpected ASGI message 'websocket.send', after sending 'websocket.close'" in str(error):
             logger.debug(
                 "Websocket_message after send",
                 error=str(error),
                 src_ip=get_client_ip(websocket),
             )
         else:
-            logger.error(
-                LogMessages.WebsocketError, src_ip=get_client_ip(websocket), error=error
-            )
+            logger.error(LogMessages.WebsocketError, src_ip=get_client_ip(websocket), error=error)
         return
     except Exception as error:
         logger.error(LogMessages.WebsocketError, error=error)
@@ -364,13 +343,9 @@ async def analyze(
 
     trace.get_current_span().set_attribute("userid", str(analyze_form.userid))
     trace.get_current_span().set_attribute("job_id", str(analyze_form.jobid))
-    trace.get_current_span().set_attribute(
-        "analysis_type", analyze_form.analysis_type.value
-    )
+    trace.get_current_span().set_attribute("analysis_type", analyze_form.analysis_type.value)
     # check we have a userid and jobid matching the query
-    query = select(Jobs).where(
-        Jobs.userid == analyze_form.userid, Jobs.id == analyze_form.jobid
-    )
+    query = select(Jobs).where(Jobs.userid == analyze_form.userid, Jobs.id == analyze_form.jobid)
     try:
         session.exec(query).one()
     except NoResultFound:
@@ -405,9 +380,7 @@ def create_session(userid: UUID, session: Session) -> ChatUiDBSession:
 
 
 @app.post("/session/new/{userid}")
-async def session_new(
-    userid: UUID, session: Session = Depends(get_session)
-) -> ChatUiDBSession:
+async def session_new(userid: UUID, session: Session = Depends(get_session)) -> ChatUiDBSession:
     # check the userid exists
     trace.get_current_span().set_attribute("userid", str(userid))
     try:
@@ -429,7 +402,6 @@ async def session_update(
     form: SessionUpdateForm,
     session: Session = Depends(get_session),
 ) -> ChatUiDBSession:
-
     trace.get_current_span().set_attribute("userid", str(userid))
     trace.get_current_span().set_attribute("sessionid", str(sessionid))
 
@@ -471,9 +443,7 @@ async def get_user_sessions(
 
     try:
         query = (
-            select(ChatUiDBSession)
-            .where(ChatUiDBSession.userid == userid)
-            .order_by(ChatUiDBSession.created.desc())  # type: ignore
+            select(ChatUiDBSession).where(ChatUiDBSession.userid == userid).order_by(ChatUiDBSession.created.desc())  # type: ignore
             # because desc isn't a method of datetime but it works in sqlalchemy
         )
         res: Sequence[ChatUiDBSession] = session.exec(query).all()
@@ -508,9 +478,7 @@ async def analyses(
     elif analysisid is not None:
         query = query.where(JobAnalysis.analysisid == analysisid)
     else:
-        raise HTTPException(
-            400, "No filters provided, please specify either userid or analysisid"
-        )
+        raise HTTPException(400, "No filters provided, please specify either userid or analysisid")
     return [item for item in session.exec(query).all()]
 
 
@@ -651,6 +619,4 @@ async def admin_analyses(
 @app.get("/")
 async def index() -> HTMLResponse:
     """returns the contents of html/index.html as a HTMLResponse object"""
-    return HTMLResponse(
-        Path(os.path.join(os.path.dirname(__file__), "html/index.html")).read_bytes()
-    )
+    return HTMLResponse(Path(os.path.join(os.path.dirname(__file__), "html/index.html")).read_bytes())

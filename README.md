@@ -2,6 +2,8 @@
 
 A really simple FastAPI-based thing that provides a chatbot-looking UI.
 
+Tested with Mixtral-8x7B-Instruct
+
 ## Configuration
 
 All config options are prefixed with `CHATUI_`.
