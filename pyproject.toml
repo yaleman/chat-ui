@@ -39,7 +39,7 @@ opentelemetry-instrumentation-requests = "0.45b0"
 opentelemetry-instrumentation-httpx = "0.45b0"
 
 [tool.poetry.group.dev.dependencies]
-mypy = "^1.5.0"
+mypy = "^1.12.0"
 black = "^24.10.0"
 ruff = "^0.6.9"
 pytest = "^8.0.0"
