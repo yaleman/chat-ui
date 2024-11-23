@@ -54,7 +54,7 @@ pytest-asyncio = "^0.24.0"
 
 
 [tool.poetry.group.llama.dependencies]
-llama-cpp-python = { extras = ["server"], version = "^0.3.1" }
+llama-cpp-python = { extras = ["server"], version = "^0.3.2" }
 
 [tool.poetry.scripts]
 chat-ui = "chat_ui.__main__:main"
