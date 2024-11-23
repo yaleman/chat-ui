@@ -26,7 +26,7 @@ aiohttp = "^3.11.2"
 requests = "^2.31.0"
 openai = "^1.55.0"
 sqlmodel = "^0.0.22"
-cmarkgfm = "^2024.1.14"
+cmarkgfm = "^2024.11.20"
 sqlalchemy-utils = "^0.41.2"
 
 opentelemetry-exporter-otlp = "1.24.0"
