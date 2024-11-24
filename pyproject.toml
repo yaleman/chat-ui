@@ -45,7 +45,7 @@ ruff = "^0.7.4"
 pytest = "^8.0.0"
 httpx = "^0.27.2"
 mkdocs = { version = "^1.5.3", extras = ["python"] }
-mkdocs-material = "^9.5.44"
+mkdocs-material = "^9.5.45"
 markdown-mdantic = "^2.1.0"
 types-requests = "^2.32.0.20241016"
 pytest-cov = "^6.0.0"
