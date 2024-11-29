@@ -11,7 +11,7 @@ packages = [{ include = "chat_ui" }]
 python = "^3.10"
 fastapi = "^0.115.5"
 pydantic = "^2.10.1"
-uvicorn = "^0.32.0"
+uvicorn = "^0.32.1"
 click = "^8.1.6"
 fortune-python = "^1.1.1"
 itsdangerous = "^2.1.2"
