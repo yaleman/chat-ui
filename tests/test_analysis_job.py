@@ -42,9 +42,7 @@ async def test_analysis_job(session: sqlmodel.Session) -> None:
     )
 
     # create the session
-    user_session = ChatUiDBSession.model_validate(
-        client.post(f"/session/new/{userid.hex}").json()
-    )
+    user_session = ChatUiDBSession.model_validate(client.post(f"/session/new/{userid.hex}").json())
 
     # create the job, but don't set it to done yet
     prompt = "write me a limerick"
@@ -93,9 +91,7 @@ async def test_analysis_job(session: sqlmodel.Session) -> None:
         except Exception as error:
             pytest.skip(f"Failed to connect to backend for tests, skipping! {error=}")
 
-    assert (
-        await backgroundpoller.process_outstanding_analyses(session)
-    ) == analysisjob_data.analysisid
+    assert (await backgroundpoller.process_outstanding_analyses(session)) == analysisjob_data.analysisid
 
     # get the response and see what comes back
     res = client.get(
@@ -122,9 +118,7 @@ def test_analysis_not_found() -> None:
 
 def test_analyses_endpoint() -> None:
     client = TestClient(app)
-    res = client.get(
-        Urls.Analyses, params={"userid": uuid4().hex, "analysisid": uuid4().hex}
-    )
+    res = client.get(Urls.Analyses, params={"userid": uuid4().hex, "analysisid": uuid4().hex})
     assert res.status_code == 200
     assert res.json() == []
 

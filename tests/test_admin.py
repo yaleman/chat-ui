@@ -1,12 +1,25 @@
 import os
 from uuid import uuid4
+
+import sqlmodel
+import pytest
 from fastapi.testclient import TestClient
-from chat_ui import app
+from chat_ui import app, get_session
 from chat_ui.enums import Urls
 
 
-def test_admin_jobs() -> None:
+# this sets up the fixture for the session
+from . import get_test_session  # noqa: E402,F401
+
+
+@pytest.mark.asyncio()
+async def test_admin_jobs(session: sqlmodel.Session) -> None:
     """tests the admin jobs functionality"""
+
+    def get_session_override() -> sqlmodel.Session:
+        return session
+
+    app.dependency_overrides[get_session] = get_session_override
 
     client = TestClient(app)
 
@@ -23,9 +36,7 @@ def test_admin_jobs() -> None:
     print(response.text)
     assert response.status_code == 403
 
-    response = client.get(
-        Urls.AdminJobs, headers={"admin-password": temp_admin_password}
-    )
+    response = client.get(Urls.AdminJobs, headers={"admin-password": temp_admin_password})
     print(response.text)
     assert response.status_code == 200
 
@@ -38,9 +49,7 @@ def test_admin_jobs() -> None:
     # remove the password and test it again
     del os.environ["CHATUI_ADMIN_PASSWORD"]
 
-    response = client.get(
-        Urls.AdminJobs, headers={"admin-password": temp_admin_password}
-    )
+    response = client.get(Urls.AdminJobs, headers={"admin-password": temp_admin_password})
     print(response.text)
     assert response.status_code == 500
 
@@ -65,9 +74,7 @@ def test_admin_users() -> None:
     print(response.text)
     assert response.status_code == 403
 
-    response = client.get(
-        Urls.AdminUsers, headers={"admin-password": temp_admin_password}
-    )
+    response = client.get(Urls.AdminUsers, headers={"admin-password": temp_admin_password})
     print(response.text)
     assert response.status_code == 200
 
@@ -80,9 +87,7 @@ def test_admin_users() -> None:
     # remove the password and test it again
     del os.environ["CHATUI_ADMIN_PASSWORD"]
 
-    response = client.get(
-        Urls.AdminUsers, headers={"admin-password": temp_admin_password}
-    )
+    response = client.get(Urls.AdminUsers, headers={"admin-password": temp_admin_password})
     print(response.text)
     assert response.status_code == 500
 
@@ -107,9 +112,7 @@ def test_admin_analyses() -> None:
     print(response.text)
     assert response.status_code == 403
 
-    response = client.get(
-        Urls.AdminAnalyses, headers={"admin-password": temp_admin_password}
-    )
+    response = client.get(Urls.AdminAnalyses, headers={"admin-password": temp_admin_password})
     print(response.text)
     assert response.status_code == 200
 
@@ -122,9 +125,7 @@ def test_admin_analyses() -> None:
     # remove the password and test it again
     del os.environ["CHATUI_ADMIN_PASSWORD"]
 
-    response = client.get(
-        Urls.AdminAnalyses, headers={"admin-password": temp_admin_password}
-    )
+    response = client.get(Urls.AdminAnalyses, headers={"admin-password": temp_admin_password})
     print(response.text)
     assert response.status_code == 500
 
@@ -149,9 +150,7 @@ def test_admin_sessions() -> None:
     print(response.text)
     assert response.status_code == 403
 
-    response = client.get(
-        Urls.AdminSessions, headers={"admin-password": temp_admin_password}
-    )
+    response = client.get(Urls.AdminSessions, headers={"admin-password": temp_admin_password})
     print(response.text)
     assert response.status_code == 200
 
@@ -164,9 +163,7 @@ def test_admin_sessions() -> None:
     # remove the password and test it again
     del os.environ["CHATUI_ADMIN_PASSWORD"]
 
-    response = client.get(
-        Urls.AdminSessions, headers={"admin-password": temp_admin_password}
-    )
+    response = client.get(Urls.AdminSessions, headers={"admin-password": temp_admin_password})
     print(response.text)
     assert response.status_code == 500
 
